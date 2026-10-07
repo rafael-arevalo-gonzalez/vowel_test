@@ -1,0 +1,3388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vowel Space Explorer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<!--
+  Optional: reference_values.js, if present in the same folder as this HTML
+  file, can define window.USER_REFERENCE_DATA with your own additional
+  reference formant sets. If the file isn't there, this tag just fails to
+  load (a normal 404 in the console) and the page continues completely
+  normally -- the custom-reference checkbox in the sidebar stays disabled
+  and nothing else is affected. See reference_values.js for the format.
+-->
+<script src="reference_values.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14171c;
+    --panel:#1b1f26;
+    --panel-raised:#20242c;
+    --border:#2b303b;
+    --border-soft:#23272f;
+    --text:#e8e6e1;
+    --text-dim:#8b93a1;
+    --text-faint:#5a6170;
+    --accent:#e8a33d;
+    --accent-dim:rgba(232,163,61,0.16);
+    --accent-text:#1a1400;
+    --danger:#e8695f;
+    --font-display:'Space Grotesk', system-ui, sans-serif;
+    --font-mono:'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+  html[data-theme="light"]{
+    --bg:#f2f0e9;
+    --panel:#fdfcf9;
+    --panel-raised:#ffffff;
+    --border:#d9d4c5;
+    --border-soft:#e7e3d7;
+    --text:#211f1a;
+    --text-dim:#6b6558;
+    --text-faint:#9a927e;
+    --accent:#af6417;
+    --accent-dim:rgba(175,100,23,0.12);
+    --accent-text:#fffaf3;
+    --danger:#b23324;
+  }
+  html{background:var(--bg);}
+  #theme-toggle{display:flex;align-items:center;gap:6px;}
+  #theme-toggle .icon{font-size:13px;line-height:1;}
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--font-display);
+    font-size:14px;
+    -webkit-font-smoothing:antialiased;
+  }
+  #app{display:flex;flex-direction:column;height:100vh;}
+
+  header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 22px;border-bottom:1px solid var(--border);
+    background:var(--panel);
+    flex-shrink:0;
+  }
+  .brand{display:flex;align-items:baseline;gap:10px;}
+  .brand h1{font-size:17px;font-weight:700;margin:0;letter-spacing:0.01em;}
+  .brand .tagline{font-size:12px;color:var(--text-faint);font-family:var(--font-mono);}
+  .header-right{display:flex;align-items:center;gap:12px;}
+  #file-status{font-family:var(--font-mono);font-size:12px;color:var(--text-dim);}
+  #file-status.loaded{color:var(--accent);}
+
+  button, .btn{
+    background:var(--panel-raised);color:var(--text);
+    border:1px solid var(--border);border-radius:5px;
+    padding:7px 13px;font-family:var(--font-display);font-size:12.5px;font-weight:500;
+    cursor:pointer;transition:border-color .15s, background .15s;
+  }
+  button:hover, .btn:hover{border-color:var(--accent);}
+  button.primary{background:var(--accent);color:var(--accent-text);border-color:var(--accent);font-weight:700;}
+  button.primary:hover{filter:brightness(1.08);}
+  button.link{background:none;border:none;color:var(--text-dim);text-decoration:underline;padding:2px;font-size:12px;}
+  button.link:hover{color:var(--accent);}
+  button:disabled{opacity:0.4;cursor:not-allowed;}
+  input[type=file]{display:none;}
+
+  .layout{flex:1;display:flex;min-height:0;}
+
+  #controls{
+    width:300px;flex-shrink:0;overflow-y:auto;
+    border-right:1px solid var(--border);background:var(--panel);
+    padding:6px 0 40px 0;
+  }
+  .section{padding:14px 18px;border-bottom:1px solid var(--border-soft);}
+  .section h2{
+    font-family:var(--font-mono);font-size:10.5px;letter-spacing:0.11em;
+    text-transform:uppercase;color:var(--text-faint);margin:0 0 10px 0;font-weight:500;
+  }
+  .row-between{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+
+  select{
+    width:100%;background:var(--panel-raised);color:var(--text);
+    border:1px solid var(--border);border-radius:5px;padding:6px 8px;
+    font-family:var(--font-mono);font-size:12.5px;
+  }
+
+  .group-block{margin-bottom:6px;}
+  .group-head{
+    display:flex;align-items:center;gap:6px;
+    padding:4px 0;font-weight:500;font-size:13px;
+  }
+  .group-head .group-checkbox{accent-color:var(--accent);cursor:pointer;flex-shrink:0;}
+  .group-head .group-name{cursor:pointer;flex:1;}
+  .group-head .chev{color:var(--text-faint);font-size:10px;width:10px;display:inline-block;}
+  .speaker-list{margin-left:20px;display:flex;flex-direction:column;gap:2px;}
+  label.check{
+    display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text-dim);
+    padding:2px 0;cursor:pointer;user-select:none;
+  }
+  label.check:hover{color:var(--text);}
+  label.check input{accent-color:var(--accent);}
+  .vowel-grid{display:flex;flex-wrap:wrap;gap:8px;}
+  .vowel-grid label.check{
+    border:1px solid var(--border);border-radius:5px;padding:4px 9px;
+    font-family:var(--font-mono);
+  }
+  .mini-actions{display:flex;gap:10px;margin:6px 0 8px 0;}
+
+  .mode-list{display:flex;flex-direction:column;gap:5px;}
+  .scheme-list{display:flex;flex-direction:column;gap:5px;}
+  .scheme-list label.check, .mode-list label.check{
+    border:1px solid var(--border);border-radius:5px;padding:6px 9px;
+  }
+  .scheme-list label.check .hint{color:var(--text-faint);font-size:11px;margin-left:auto;font-family:var(--font-mono);}
+
+  .num-inputs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;}
+  .num-inputs label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--text-faint);font-family:var(--font-mono);}
+  .num-inputs input{
+    background:var(--panel-raised);border:1px solid var(--border);color:var(--text);
+    border-radius:5px;padding:5px 7px;font-family:var(--font-mono);font-size:12.5px;
+  }
+  .inline-num{display:flex;align-items:center;gap:6px;margin-top:6px;}
+  .inline-num input{
+    width:64px;background:var(--panel-raised);border:1px solid var(--border);color:var(--text);
+    border-radius:5px;padding:5px 7px;font-family:var(--font-mono);font-size:12.5px;
+  }
+  .radio-row{display:flex;gap:14px;font-size:12.5px;color:var(--text-dim);}
+  .radio-row label{display:flex;align-items:center;gap:5px;cursor:pointer;}
+
+  main{flex:1;display:flex;flex-direction:column;min-width:0;position:relative;}
+  #plot-wrap{flex:1;position:relative;min-height:0;}
+  #plot{width:100%;height:100%;display:block;}
+  #token-tooltip{
+    position:absolute;pointer-events:none;z-index:20;
+    background:var(--panel-raised);border:1px solid var(--border);border-radius:6px;
+    padding:8px 11px;font-family:var(--font-mono);font-size:11.5px;color:var(--text);
+    line-height:1.6;box-shadow:0 4px 14px rgba(0,0,0,0.35);white-space:nowrap;
+  }
+  #token-tooltip b{color:var(--accent);font-weight:500;}
+  #token-tooltip .dim{color:var(--text-faint);}
+  #empty-state{
+    position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:14px;color:var(--text-faint);text-align:center;padding:20px;
+  }
+  #empty-state .big{font-family:var(--font-mono);font-size:13px;color:var(--text-dim);max-width:420px;line-height:1.6;}
+
+  #readout{
+    font-family:var(--font-mono);font-size:11.5px;color:var(--text-faint);
+    padding:7px 18px;border-top:1px solid var(--border-soft);
+    display:flex;gap:22px;flex-wrap:wrap;background:var(--panel);flex-shrink:0;
+  }
+  #readout span b{color:var(--accent);font-weight:500;}
+  #readout.error{color:var(--danger);}
+
+  #legend{
+    border-top:1px solid var(--border);background:var(--panel);
+    padding:10px 18px;display:flex;flex-wrap:wrap;gap:14px;flex-shrink:0;max-height:110px;overflow-y:auto;
+  }
+  .legend-item{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--text-dim);font-family:var(--font-mono);}
+  .legend-swatch{width:11px;height:11px;border-radius:3px;flex-shrink:0;}
+
+  #stats-panel{
+    border-top:1px solid var(--border);background:var(--panel);
+    padding:18px 22px 26px 22px;max-height:46vh;overflow-y:auto;flex-shrink:0;
+  }
+  #distribution-panel{
+    border-top:1px solid var(--border);background:var(--panel);
+    padding:18px 22px 26px 22px;flex-shrink:0;
+  }
+  .stats-section{margin-bottom:22px;}
+  .stats-section:last-child{margin-bottom:0;}
+  .stats-section-head h2{
+    font-family:var(--font-mono);font-size:12px;letter-spacing:0.08em;text-transform:uppercase;
+    color:var(--accent);margin:0 0 8px 0;font-weight:500;
+  }
+  .stats-explain{
+    background:var(--panel-raised);border:1px solid var(--border);border-radius:6px;
+    padding:2px 14px;margin-bottom:12px;font-size:12.5px;color:var(--text-dim);line-height:1.6;
+  }
+  .stats-explain summary{cursor:pointer;padding:8px 0;font-weight:500;color:var(--text);font-family:var(--font-mono);font-size:11.5px;}
+  .stats-explain p{margin:0 0 10px 0;}
+  .stats-explain b{color:var(--text);}
+  .stats-summary{font-size:12.5px;color:var(--text-dim);font-family:var(--font-mono);margin-bottom:10px;}
+  .stats-summary b{color:var(--accent);}
+  .stats-table-wrap{max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;}
+  table.stats-table{width:100%;border-collapse:collapse;font-size:12px;font-family:var(--font-mono);}
+  table.stats-table th{
+    position:sticky;top:0;background:var(--panel-raised);text-align:left;padding:7px 10px;
+    color:var(--text-faint);font-weight:500;border-bottom:1px solid var(--border);white-space:nowrap;
+  }
+  table.stats-table td{padding:6px 10px;border-bottom:1px solid var(--border-soft);color:var(--text-dim);white-space:nowrap;}
+  table.stats-table tr:last-child td{border-bottom:none;}
+  table.stats-table tr:hover td{background:var(--panel-raised);}
+  table.stats-table th.sortable{cursor:pointer;}
+  table.stats-table th.sortable:hover{color:var(--text-dim);}
+  table.stats-table th.sortable .sort-arrow{display:inline-block;width:0.9em;opacity:0.6;}
+  .stats-empty{color:var(--text-faint) !important;font-style:italic;white-space:normal !important;}
+
+  ::-webkit-scrollbar{width:9px;height:9px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:5px;}
+  ::-webkit-scrollbar-thumb:hover{background:var(--text-faint);}
+
+  .axis path, .axis line{stroke:var(--border);}
+  .axis text{fill:var(--text-faint);font-family:var(--font-mono);font-size:10.5px;}
+  .grid line{stroke:var(--border-soft);}
+  .grid path{stroke:none;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <div class="brand">
+      <h1>Vowel Space Explorer</h1>
+      <span class="tagline">F1&nbsp;&times;&nbsp;F2 &mdash; means / heatmap / tokens</span>
+    </div>
+    <div class="header-right">
+      <button class="btn" id="theme-toggle" title="Toggle light/dark"><span class="icon">&#9789;</span><span id="theme-label">dark</span></button>
+      <span id="file-status">no file loaded</span>
+      <button class="link" id="load-example">load example data</button>
+      <button class="btn" id="stats-toggle" disabled>Statistics</button>
+      <button class="btn" id="distribution-toggle" disabled>Distribution</button>
+      <button class="btn" id="export-svg" disabled>Export SVG</button>
+      <button class="btn" id="export-png" disabled>Export PNG</button>
+      <label class="btn primary" for="csv-input" style="display:inline-block;">Upload CSV</label>
+      <input type="file" id="csv-input" accept=".csv">
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside id="controls">
+
+      <div class="section" id="section-formant" style="display:none;">
+        <h2>Formants / normalization</h2>
+        <select id="formant-select"></select>
+      </div>
+
+      <div class="section" id="section-speakers" style="display:none;">
+        <h2>Speakers</h2>
+        <div class="mini-actions">
+          <button class="link" data-action="select-all-speakers">all</button>
+          <button class="link" data-action="select-none-speakers">none</button>
+        </div>
+        <div id="speaker-tree"></div>
+      </div>
+
+      <div class="section" id="section-gender" style="display:none;">
+        <h2>Gender</h2>
+        <div class="mini-actions">
+          <button class="link" data-action="select-all-genders">all</button>
+          <button class="link" data-action="select-none-genders">none</button>
+        </div>
+        <div class="vowel-grid" id="gender-grid"></div>
+      </div>
+
+      <div class="section" id="section-filters" style="display:none;">
+        <h2>Token filters</h2>
+        <div id="filters-body"></div>
+      </div>
+
+      <div class="section" id="section-vowels" style="display:none;">
+        <h2>Vowels</h2>
+        <div class="mini-actions">
+          <button class="link" data-action="select-all-vowels">all</button>
+          <button class="link" data-action="select-none-vowels">none</button>
+        </div>
+        <div class="vowel-grid" id="vowel-grid"></div>
+      </div>
+
+      <div class="section" id="section-environment" style="display:none;">
+        <h2>Environment context</h2>
+        <div class="radio-row" style="margin-bottom:8px;">
+          <label><input type="radio" name="env-side" value="previous" checked> Previous sound</label>
+          <label><input type="radio" name="env-side" value="succeeding"> Succeeding sound</label>
+        </div>
+        <div id="env-collapsed-row" style="display:none;margin-bottom:8px;">
+          <label class="check" style="border:1px solid var(--border);border-radius:5px;padding:6px 9px;">
+            <input type="checkbox" id="env-collapsed-toggle"> Collapsed allophones (c&rarr;k, &ccedil;&rarr;x, &#607;&#669;/&#643;&rarr;&#669;)
+          </label>
+        </div>
+        <div class="radio-row" style="margin-bottom:10px;">
+          <label><input type="radio" name="env-level" value="detailed_class" checked> Detailed</label>
+          <label><input type="radio" name="env-level" value="broad_class"> Broad</label>
+          <label><input type="radio" name="env-level" value="place"> Place</label>
+          <label><input type="radio" name="env-level" value="voicing"> Voicing</label>
+        </div>
+        <div class="mini-actions">
+          <button class="link" data-action="select-all-env">all</button>
+          <button class="link" data-action="select-none-env">none</button>
+        </div>
+        <div class="vowel-grid" id="env-grid"></div>
+      </div>
+
+      <div class="section" id="section-outliers" style="display:none;">
+        <h2>Outlier removal</h2>
+        <label class="check" style="border:1px solid var(--border);border-radius:5px;padding:6px 9px;">
+          <input type="checkbox" id="outlier-toggle" checked> Remove outliers
+        </label>
+        <div class="inline-num">
+          <span style="color:var(--text-faint);font-size:12px;">threshold</span>
+          <input type="number" id="outlier-threshold" value="2.5" min="0.5" step="0.1">
+          <span style="color:var(--text-faint);font-size:12px;">Mahalanobis dist.</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-faint);margin-top:6px;line-height:1.5;">
+          Removes tokens whose raw F1/F2 fall more than this many Mahalanobis-distance
+          units from their own (group, speaker, vowel) cell's mean &mdash; the same
+          bivariate distance the confidence ellipses and token typicality readout use
+          elsewhere, computed once on the raw Hz scale so normalization choice doesn't
+          change which tokens count as outliers. Cells with fewer than 5 tokens aren't
+          touched (too little data to trust a covariance estimate).
+        </div>
+      </div>
+
+      <div class="section" id="section-display" style="display:none;">
+        <h2>Display &mdash; overlay any combination</h2>
+        <div class="mode-list">
+          <label class="check"><input type="checkbox" data-mode="tokens"> Tokens <span class="hint">raw scatter</span></label>
+          <label class="check" id="means-mode-label"><input type="checkbox" data-mode="means" checked> Means <span class="hint">trapezoid</span></label>
+          <label class="check"><input type="checkbox" data-mode="heatmap" checked> Heatmap <span class="hint">density</span></label>
+        </div>
+        <label class="check" style="margin-top:8px;border:1px solid var(--border);border-radius:5px;padding:6px 9px;">
+          <input type="checkbox" id="center-toggle"> Center each category on its own mean
+          <span class="hint">compare shape</span>
+        </label>
+        <div id="center-hint" style="font-size:11px;color:var(--text-faint);margin-top:5px;line-height:1.5;display:none;">
+          Every category (as defined by Color by, below) is now plotted as
+          deviation from its OWN mean, not absolute F1/F2 -- so e.g. every
+          selected speaker's /a/ lands overlapping at a common origin,
+          letting you compare shape/spread directly, independent of where
+          each one actually sits. Narrow the vowel selection above to just
+          one vowel if you want to see only that vowel's speakers overlaid,
+          rather than all vowels collapsing toward the same origin together.
+        </div>
+      </div>
+
+      <div class="section" id="section-color" style="display:none;">
+        <h2>Color by</h2>
+        <div class="scheme-list" id="scheme-list">
+          <label class="check"><input type="radio" name="scheme" value="vowel" checked> Vowel <span class="hint">pooled</span></label>
+          <label class="check"><input type="radio" name="scheme" value="vowel-speaker"> Vowel &times; Speaker <span class="hint">hue+shade</span></label>
+          <label class="check"><input type="radio" name="scheme" value="vowel-group"> Vowel &times; Group <span class="hint">hue+shade</span></label>
+          <label class="check" id="scheme-vowel-gender-label"><input type="radio" name="scheme" value="vowel-gender"> Vowel &times; Gender <span class="hint">hue+shade</span></label>
+          <label class="check" id="scheme-vowel-env-label"><input type="radio" name="scheme" value="vowel-env"> Vowel &times; Environment <span class="hint">hue=voiced/voiceless</span></label>
+          <label class="check"><input type="radio" name="scheme" value="speaker"> Speaker <span class="hint">pooled</span></label>
+          <label class="check"><input type="radio" name="scheme" value="group"> Group <span class="hint">pooled</span></label>
+          <label class="check" id="scheme-gender-label"><input type="radio" name="scheme" value="gender"> Gender <span class="hint">pooled</span></label>
+          <label class="check" id="scheme-env-label"><input type="radio" name="scheme" value="env"> Environment <span class="hint">pooled, hue=voiced/voiceless</span></label>
+        </div>
+      </div>
+
+      <div class="section" id="section-ellipse" style="display:none;">
+        <h2>Confidence ellipses</h2>
+        <label class="check"><input type="checkbox" id="ellipse-toggle"> Overlay ellipses (per vowel)</label>
+        <div class="inline-num">
+          <span style="color:var(--text-faint);font-size:12px;">confidence</span>
+          <input type="number" id="ellipse-pct" value="95" min="1" max="99.9" step="1">
+          <span style="color:var(--text-faint);font-size:12px;">%</span>
+        </div>
+      </div>
+
+      <div class="section" id="section-reference" style="display:none;">
+        <h2>Reference overlays</h2>
+        <label class="check"><input type="checkbox" id="paper-reference-toggle"> Rangel Navia et al. (2016) \u2014 espa\u00f1ol colombiano</label>
+        <label class="check"><input type="checkbox" id="custom-reference-toggle" disabled> Custom reference (reference_values.js)</label>
+        <div id="reference-hint" style="font-size:11px;color:var(--text-faint);margin-top:6px;line-height:1.5;"></div>
+      </div>
+
+      <div class="section" id="section-axis" style="display:none;">
+        <h2>Axis scale</h2>
+        <div class="radio-row">
+          <label><input type="radio" name="axis-mode" value="auto" checked> Auto</label>
+          <label><input type="radio" name="axis-mode" value="custom"> Custom</label>
+        </div>
+        <div class="num-inputs" id="custom-axis-inputs" style="display:none;">
+          <label>F2 min <input type="number" id="f2-min"></label>
+          <label>F2 max <input type="number" id="f2-max"></label>
+          <label>F1 min <input type="number" id="f1-min"></label>
+          <label>F1 max <input type="number" id="f1-max"></label>
+        </div>
+      </div>
+
+    </aside>
+
+    <main>
+      <div id="plot-wrap">
+        <svg id="plot"></svg>
+        <div id="token-tooltip" style="display:none;"></div>
+        <div id="empty-state">
+          <div class="big">
+            Upload a CSV with <code>group</code>, <code>speaker</code>, <code>vowel</code>, and raw <code>F1</code>/<code>F2</code> (Hz)
+            &mdash; Bark, Lobanov, Nearey (1 and 2), Watt &amp; Fabricius, and Labov ANAE normalization are all computed automatically, no
+            precomputed columns needed. Optional columns <code>gender</code>, <code>previous_sound</code>,
+            and <code>succeeding_sound</code> unlock the gender and environment-context controls below.
+            Or click <b>load example data</b> above to try the tool first.
+          </div>
+        </div>
+      </div>
+      <div id="readout"></div>
+      <div id="legend"></div>
+      <div id="stats-panel" style="display:none;">
+
+        <div class="stats-section">
+          <div class="stats-section-head">
+            <h2>Pairwise category overlap</h2>
+          </div>
+          <details class="stats-explain" open>
+            <summary>What is this?</summary>
+            <p>
+              For every pair of the categories currently shown in the legend above, this computes
+              two numbers that both describe how separated the two are in F1/F2 space, but in
+              different ways.
+            </p>
+            <p>
+              <b>Pillai's trace</b> comes from a two-group MANOVA: it splits the total spread of
+              both categories combined into spread <i>around each category's own center</i>
+              (within-group) and spread <i>between the two centers</i>, and reports what share of
+              the total owes to the between-group part. Bounded between 0 (statistically
+              indistinguishable by position &mdash; total overlap) and just under 1 (almost
+              entirely separate regions). It's a stable measurement &mdash; it does not get
+              artificially inflated just by adding more tokens &mdash; but it does saturate near
+              its ceiling: two comparisons that are both very well separated can both read ~0.98,
+              with no way to tell which is actually <i>more</i> separated.
+            </p>
+            <p>
+              <b>Hellinger distance</b> instead fits a 2D Gaussian to each category directly (its
+              mean and covariance) and measures how much those two fitted shapes overlap
+              geometrically, with no ceiling effect &mdash; it keeps distinguishing degree of
+              separation past the point where Pillai has flattened out near 1. Bounded between 0
+              (identical) and 1 (no overlap at all), and &mdash; unlike Pillai's trace &mdash; a
+              genuine mathematical distance (it satisfies the triangle inequality), which is what
+              makes it safe to average across several comparisons into one number, as the section
+              below does.
+            </p>
+            <p>
+              The two should generally agree on which pairs are more or less separated.
+              Disagreement usually means the ceiling effect above, or two categories with similar
+              centers but noticeably different spread/shape, which Hellinger is more sensitive to.
+              Only pairs with at least 10 tokens on each side are shown; when the color scheme
+              crosses vowel with speaker or group, only pairs sharing the <i>same vowel</i> are
+              compared &mdash; comparing across different vowels (e.g. /i/ vs /a/) is trivially
+              "very separated" and not an informative comparison.
+            </p>
+            <p>
+              <b>Euclidean distance</b> (in whichever formant units/normalization is currently
+              selected above) is included for comparison &mdash; it's just the straight-line
+              distance between the two categories' mean points, ignoring shape entirely. Click a
+              column header to sort by it. Sorting by Euclidean ascending and scanning for rows
+              where Pillai/Hellinger are nevertheless high is exactly how to find pairs whose
+              means nearly coincide but whose actual token clouds don't &mdash; the clearest
+              demonstration of why this panel doesn't just report Euclidean distance on its own.
+            </p>
+          </details>
+          <div class="stats-table-wrap">
+            <table class="stats-table">
+              <thead><tr>
+                <th>Category 1</th><th>Category 2</th>
+                <th class="sortable" data-key="euclid">Euclidean <span class="sort-arrow"></span></th>
+                <th class="sortable" data-key="pillai">Pillai's trace <span class="sort-arrow"></span></th>
+                <th class="sortable" data-key="hellinger">Hellinger <span class="sort-arrow"></span></th>
+                <th>n₁</th><th>n₂</th>
+              </tr></thead>
+              <tbody id="stats-overlap-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="stats-section">
+          <div class="stats-section-head">
+            <h2>Speaker system distance</h2>
+          </div>
+          <details class="stats-explain" open>
+            <summary>What is this?</summary>
+            <p>
+              For every pair of currently <b>selected speakers</b> (independent of whatever color
+              scheme is active), this averages the Hellinger distance above across every vowel
+              both speakers have at least 10 tokens of &mdash; one overall number for how
+              different their <i>whole</i> vowel systems are, rather than one vowel at a time.
+              Sorted closest pairs first.
+            </p>
+            <p>
+              The summary line splits every pair into <b>within</b> (both speakers in the same
+              dialect group) and <b>between</b> (different groups). If speakers cluster more
+              tightly within their own group than across groups, the within-mean should sit
+              noticeably below the between-mean &mdash; that's the direct, aggregate answer to
+              whether dialect membership is doing anything beyond ordinary individual variation.
+              If the two numbers are close, whatever differences show up vowel-by-vowel above
+              aren't adding up to much at the level of the whole system.
+            </p>
+            <p>
+              One thing worth knowing: unlike a fixed batch script run once over a whole corpus,
+              these numbers are computed from whichever speakers and vowels you currently have
+              selected in the sidebar &mdash; narrow the selection, and the comparison narrows
+              with it. That's usually what you want while exploring, but it does mean these aren't
+              a fixed, corpus-wide constant.
+            </p>
+          </details>
+          <div id="stats-within-between" class="stats-summary"></div>
+          <div class="stats-table-wrap">
+            <table class="stats-table">
+              <thead><tr><th>Speaker 1</th><th>Speaker 2</th><th>Mean Hellinger</th><th>Vowels compared</th></tr></thead>
+              <tbody id="stats-speaker-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="stats-section">
+          <div class="stats-section-head">
+            <h2>Dispersion (variance / SD)</h2>
+          </div>
+          <details class="stats-explain" open>
+            <summary>What is this?</summary>
+            <p>
+              Variance and standard deviation describe how <i>spread out</i> a category's tokens are
+              around its own mean &mdash; the same quantities the confidence ellipses are built from,
+              and the same "shape" information that feeds the shape-term half of the Bhattacharyya/
+              Hellinger comparisons above. A tight, low-variance category is a precisely, consistently
+              produced vowel; a high-variance one is produced more variably &mdash; more casual/careless
+              speech, a merger in progress, or (in clinical contexts like the Rangel Navia et al. paper
+              referenced elsewhere in this tool) a marker some studies use diagnostically.
+            </p>
+            <p>
+              SD is just <code>sqrt(variance)</code> &mdash; shown in the same units as the formant
+              itself (Hz, z-score, etc., depending on your normalization choice), which is usually
+              easier to read than variance (which is in squared units and can look artificially large).
+              F1 and F2 are reported separately since a category can be tight in one and loose in the
+              other &mdash; that's exactly what an elongated confidence ellipse is showing you visually.
+            </p>
+          </details>
+          <div class="stats-table-wrap">
+            <table class="stats-table">
+              <thead><tr><th>Category</th><th>N</th><th>Mean F2</th><th>Mean F1</th><th>Var F2</th><th>Var F1</th><th>SD F2</th><th>SD F1</th></tr></thead>
+              <tbody id="stats-dispersion-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="stats-section">
+          <div class="stats-section-head">
+            <h2>Context contrast (A vs. rest / custom groups)</h2>
+          </div>
+          <details class="stats-explain" open>
+            <summary>What is this?</summary>
+            <p>
+              Answers questions phrased the way phonetic-context claims usually are in the
+              literature -- "F2 is lower after labials," "vowels are longer after voiced
+              consonants" -- directly, instead of requiring you to read values off the
+              Dispersion table above by hand for each context category separately.
+            </p>
+            <p>
+              Pick one or more environment categories (at whatever side/granularity is set in
+              Environment context above -- <b>Place</b> or <b>Voicing</b> are usually the right
+              granularity for place-of-articulation or voicing claims) as <b>Group A</b>. By
+              default, <b>Group B is everything else currently active</b> in the Environment
+              context filter -- i.e. "A vs. the rest of what you're looking at," which is the
+              comparison most claims like this are actually making. Switch to
+              <b>custom groups</b> if you need to pool specific categories on the other side
+              instead (e.g. Group A = labial, Group B = velar + dental + alveolar, leaving
+              anything else out of the comparison entirely).
+            </p>
+            <p>
+              The comparison runs separately per vowel (never pooled across vowels -- a vowel
+              identity confound would otherwise swamp a genuine context effect, since /a/ and
+              /i/ differ enormously regardless of context) and separately for F1 and F2 of
+              whichever formant pair is currently selected above (raw Hz, Bark, Lobanov,
+              Nearey, Labov -- works with any of them). If your file has both a start and an
+              end time column, you can compare <b>Duration</b> instead.
+            </p>
+            <p>
+              Means/counts update live as you change the selection. The permutation
+              significance test (shuffling the A/B labels and seeing how often a difference
+              this large happens by chance) does <b>not</b> run automatically -- press
+              <b>Compute significance</b> after you've settled on a comparison. This is the one
+              part of this whole tool that isn't fully reactive on every interaction, on
+              purpose: re-running a permutation test on every unrelated sidebar click (axis
+              range, color scheme, an ellipse toggle) would add real lag for no reason. If you
+              change anything about the comparison after computing, the p-value columns clear
+              rather than silently showing a result for a different comparison than the one now
+              configured.
+            </p>
+            <p>
+              N shown is token count; "speakers" is the number of distinct speakers
+              contributing to that side -- worth a glance before trusting a token-level
+              difference, since a handful of prolific speakers can dominate a token count
+              without the pattern actually holding up across the sample.
+            </p>
+          </details>
+          <div class="radio-row" style="margin-bottom:8px;">
+            <label><input type="radio" name="contrast-variable" value="formant" checked> Current formant pair (F1/F2)</label>
+            <label id="contrast-variable-duration-label"><input type="radio" name="contrast-variable" value="duration"> Duration</label>
+          </div>
+          <div style="font-size:11px;color:var(--text-faint);margin-bottom:8px;">
+            Group A (pick from the categories currently active in Environment context):
+          </div>
+          <div class="vowel-grid" id="contrast-grid-a"></div>
+          <div class="radio-row" style="margin:10px 0 6px;">
+            <label><input type="radio" name="contrast-mode" value="rest" checked> Compare to: rest (everything else active)</label>
+            <label><input type="radio" name="contrast-mode" value="custom"> Compare to: custom group (Group B)</label>
+          </div>
+          <div id="contrast-groupb-wrap" style="display:none;">
+            <div style="font-size:11px;color:var(--text-faint);margin-bottom:8px;">Group B:</div>
+            <div class="vowel-grid" id="contrast-grid-b"></div>
+          </div>
+          <button class="btn" id="contrast-compute" style="margin:10px 0;">Compute significance</button>
+          <div class="stats-table-wrap">
+            <table class="stats-table">
+              <thead><tr>
+                <th>Vowel</th><th>Var</th><th>n(A)</th><th>n(B)</th>
+                <th>Spkrs A</th><th>Spkrs B</th>
+                <th>Mean A</th><th>Mean B</th><th>Diff (A&minus;B)</th><th>p</th>
+              </tr></thead>
+              <tbody id="stats-contrast-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <div id="distribution-panel" style="display:none;">
+        <div class="stats-section-head">
+          <h2>1D formant distribution</h2>
+        </div>
+        <p style="font-size:12px;color:var(--text-dim);line-height:1.6;margin:0 0 10px 0;max-width:720px;">
+          One density curve per category currently shown (same categories and colors as the main
+          plot's "Color by" setting) &mdash; the same idea as the heatmap's 2D contours, but collapsed
+          to a single formant so spread and overlap are easier to read directly off the curve's
+          width and peak height, rather than off a 2D shape.
+        </p>
+        <div class="radio-row" style="margin-bottom:12px;">
+          <label><input type="radio" name="dist-formant" value="f2" checked> F2</label>
+          <label><input type="radio" name="dist-formant" value="f1"> F1</label>
+        </div>
+        <div id="distribution-plot-wrap" style="position:relative;height:260px;">
+          <svg id="distribution-plot" style="width:100%;height:100%;"></svg>
+        </div>
+        <div id="distribution-legend" style="display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;"></div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+(function(){
+
+// ==============================================================================
+// CONSTANTS
+// ==============================================================================
+const CANONICAL_VOWEL_ORDER = ["i","e","a","o","u"];
+const CANONICAL_VOWEL_HUES  = {i:50, e:140, a:355, o:210, u:280}; // matches the yellow/green/red/blue/purple convention
+const VOWEL_SYMBOL = {
+  i: d3.symbolTriangle, e: d3.symbolSquare, a: d3.symbolCircle,
+  o: d3.symbolDiamond, u: d3.symbolStar,
+};
+const FALLBACK_SYMBOLS = [d3.symbolTriangle, d3.symbolSquare, d3.symbolCircle, d3.symbolDiamond, d3.symbolStar, d3.symbolCross, d3.symbolWye];
+const MARGIN = {top:26, right:26, bottom:50, left:64};
+// Optional categorical filters, each enabled only if the file has one of the
+// aliased columns. Values are filtered as strings (booleans/NA included).
+const EXTRA_FILTER_DEFS = [
+  {key:"stress",   label:"Stress",             aliases:["stressed", "acento"]},
+  {key:"position", label:"Word position",      aliases:["posicion_palabra"]},
+  {key:"syllable", label:"Syllable type",      aliases:["silaba"]},
+  {key:"nucleus",  label:"Syllable nucleus",   aliases:["nucleo"]},
+];
+
+// ==============================================================================
+// STATE
+// ==============================================================================
+const state = {
+  rows: [], columns: [],
+  groupCol:null, speakerCol:null, vowelCol:null, wordCol:null, timeCol:null, endCol:null,
+  genderCol:null, prevCol:null, nextCol:null,
+  numCol:null, durCol:null, pisoCol:null, markPrevCol:null, markNextCol:null,
+  prevColRaw:null, nextColRaw:null, prevAltCol:null, nextAltCol:null,
+  collapsedContext: false,       // use previo_colapsado/siguiente_colapsado instead of the aligned phones
+  extraFilters: [],              // [{key, label, col, values:[], selected:Set}] -- see EXTRA_FILTER_DEFS
+  excludeFloor: false,           // drop tokens flagged piso_mfa (30 ms aligner floor)
+  formantPairs: [], chosenPairIdx: 0,
+  groups: [], speakersByGroup: {}, vowels: [], genders: [],
+  selectedSpeakers: new Set(),   // "group|||speaker"
+  selectedVowels: new Set(),
+  selectedGenders: new Set(),
+  envSide: "previous",           // "previous" or "succeeding"
+  envLevel: "detailed_class",    // "detailed_class" | "broad_class" | "place" | "voicing"
+  envCategories: [],
+  selectedEnvCategories: new Set(),
+  modes: new Set(["means","heatmap"]),
+  removeOutliers: true,
+  outlierThreshold: 2.5,
+  hasOutlierData: false,
+  hasDurationData: false,
+  colorScheme: "vowel",
+  showEllipses: false,
+  confidencePct: 95,
+  axisMode: "auto",
+  customF2Min:null, customF2Max:null, customF1Min:null, customF1Max:null,
+  fileName: null,
+  showPaperReference: false,
+  showCustomReference: false,
+  centerOnMean: false,
+  // ---- Context contrast panel (Group A vs. rest / Group B) ----
+  contrastVariable: "formant",   // "formant" (current F1/F2 pair) | "duration"
+  contrastGroupA: new Set(),     // env-category strings
+  contrastMode: "rest",          // "rest" | "custom"
+  contrastGroupB: new Set(),     // only used when contrastMode === "custom"
+  contrastResults: null,        // last computed significance results (cleared whenever an input changes; re-populated only by the Compute button, since permutation is the one part of this panel deliberately NOT run on every render -- see updateContrastPanel)
+};
+
+
+// ==============================================================================
+// REFERENCE OVERLAYS
+// Built-in: Rangel Navia, Chinchilla Rodriguez & Espinosa Calderon (2016),
+// "Analisis de formantes vocalicos normalizados y no-normalizados para el
+// espanol colombiano", Revista Signos Fonicos 2(3), 23-40. Corpus-wide
+// ("AllSpkrs", N=333) values, Tables 1/4/7.
+//
+// The Nearey set below is the "excluding F3" table (Table 7) -- this tool's
+// own Nearey computation only ever pools F1+F2 (see computeDerivedFormants
+// above), never F3, so the F3-inclusive table (Table 8) would be comparing
+// two different things if overlaid here.
+//
+// /a/ is deliberately left OUT of the Nearey reference set: Table 7 reports
+// F1=1079 Hz and F2=1786 Hz for /a/, in raw Hz, while every other vowel in
+// that same table is reported in log-ratio units (0.3-0.6ish) -- the same
+// scale mismatch that would appear if raw Hz got mixed into a z-scored
+// Lobanov table. That's not physically consistent with a single normalization
+// procedure applied uniformly, and looks like a transcription artifact in
+// the source article rather than a real value, so it's omitted rather than
+// guessed at. The other four vowels are unaffected and are included as given.
+// ==============================================================================
+const PAPER_REFERENCE = {
+  name: "Rangel Navia et al. (2016) \u2014 espa\u00f1ol colombiano",
+  raw: {
+    i: {F1:330.49, F2:2400.11}, e: {F1:482.69, F2:2152.30}, a: {F1:867.03, F2:1435.86},
+    o: {F1:488.62, F2:984.22},  u: {F1:368.94, F2:815.89},
+  },
+  labov: {
+    i: {F1:422.0, F2:3072.0}, e: {F1:616.5, F2:2755.4}, a: {F1:1106.8, F2:1831.1},
+    o: {F1:623.7, F2:1255.8}, u: {F1:471.0, F2:1047.7},
+  },
+  nearey: {
+    // /a/ omitted -- see note above
+    i: {F1:0.412, F2:2994}, e: {F1:0.601, F2:2685},
+    o: {F1:0.608, F2:1224}, u: {F1:0.459, F2:1022},
+  },
+};
+
+// Set at the end of every render() -- the Statistics panel reads these
+// rather than recomputing its own filtering/categorization from scratch.
+let currentSubset = [];
+let currentCategories = [];
+
+// ==============================================================================
+// COLOR
+// ==============================================================================
+function vowelHue(v){
+  if (CANONICAL_VOWEL_HUES.hasOwnProperty(v)) return CANONICAL_VOWEL_HUES[v];
+  const idx = state.vowels.indexOf(v);
+  const n = Math.max(state.vowels.length, 1);
+  return Math.round((idx * 360) / n) % 360;
+}
+function vowelSymbol(v){
+  if (VOWEL_SYMBOL.hasOwnProperty(v)) return VOWEL_SYMBOL[v];
+  const idx = state.vowels.indexOf(v);
+  return FALLBACK_SYMBOLS[idx % FALLBACK_SYMBOLS.length];
+}
+// Lightness for the n-th of `total` entities (speakers or groups) sharing one
+// hue family -- spread across a range that stays readable against the dark
+// background at both ends (not so dark it vanishes, not so light it washes out).
+function entityShade(index, total){
+  // Dark backgrounds read best with lighter, more saturated shades; the
+  // same lightness range on a light/paper background would wash out
+  // barely-there, so the range shifts with the active theme.
+  const isLight = document.documentElement.getAttribute("data-theme") === "light";
+  const [lo, hi] = isLight ? [22, 56] : [34, 72];
+  if (total <= 1) return Math.round((lo+hi)/2);
+  return Math.round(lo + (index / (total - 1)) * (hi - lo));
+}
+// Neutral (non-vowel-linked) categorical hue for schemes that don't cross with vowel.
+function neutralHue(index, total){
+  return Math.round((index * 360) / Math.max(total, 1)) % 360;
+}
+// Color for an environment-category ("env" / "vowel-env" schemes). At the
+// "voicing" granularity specifically, the two categories that matter for the
+// obstruent-voicing question have a fixed, meaningful color mapping (blue =
+// voiceless, red = voiced) rather than an arbitrary categorical rotation --
+// so the same category always gets the same color across renders/vowels,
+// and matches the convention the rest of this project already uses when
+// sketching this contrast by hand. "n/a" (vowel/boundary context, not part
+// of the voicing contrast) and "unknown" (a phone missing from PHONE_CLASSES)
+// both get a flat neutral gray rather than a hue, since they aren't a
+// meaningful third point on the voiced/voiceless dimension. At any OTHER
+// env granularity (detailed_class, broad_class, place) there's no such
+// fixed pairing, so categories fall back to the same index-based hue
+// rotation "speaker"/"group"/"gender" already use.
+const ENV_VOICING_HUE = {voiceless: 213, voiced: 355};
+function envCategoryColor(cat, index, total){
+  if (cat === "n/a" || cat === "unknown") return "hsl(0,0%,55%)";
+  if (state.envLevel === "voicing" && ENV_VOICING_HUE.hasOwnProperty(cat)){
+    return `hsl(${ENV_VOICING_HUE[cat]},70%,55%)`;
+  }
+  return `hsl(${neutralHue(index,total)},65%,58%)`;
+}
+// Stable ordering for env categories: "voiceless" before "voiced" (so their
+// index-based fallback color/shade is consistent even outside the voicing
+// level), then everything else alphabetically.
+function orderedSelectedEnvCategories(){
+  const PRIORITY = {voiceless:0, voiced:1};
+  return Array.from(state.selectedEnvCategories).sort((a,b) => {
+    const pa = PRIORITY.hasOwnProperty(a) ? PRIORITY[a] : 2;
+    const pb = PRIORITY.hasOwnProperty(b) ? PRIORITY[b] : 2;
+    return pa !== pb ? pa - pb : a.localeCompare(b);
+  });
+}
+
+// ==============================================================================
+// PHONE CLASSES (ported from phone_classes.py)
+// Natural-class classification for the previous_sound/succeeding_sound
+// context around a vowel token, at three levels of granularity. See
+// phone_classes.py for the full rationale (in particular: the voiced stop /
+// voiced approximant allophones are kept separate at detailed_class but
+// merged into "obstruent" at broad_class, since the stop/approximant
+// alternation is itself context-conditioned).
+// Phones not in this table classify as "unknown" rather than throwing, so an
+// unexpected symbol shows up as a visible, filterable category.
+// ==============================================================================
+const PHONE_CLASSES = {
+  //     phone:  [detailed_class,        broad_class,  place,          voicing]
+  "p":    ["voiceless_stop",       "obstruent", "labial",        "voiceless"],
+  "t\u032a": ["voiceless_stop",    "obstruent", "dental",        "voiceless"],
+  "k":    ["voiceless_stop",       "obstruent", "velar",         "voiceless"],
+  "c":    ["voiceless_stop",       "obstruent", "palatal",       "voiceless"],
+
+  "b":    ["voiced_stop",          "obstruent", "labial",        "voiced"],
+  "d\u032a": ["voiced_stop",       "obstruent", "dental",        "voiced"],
+  "\u0261":  ["voiced_stop",       "obstruent", "velar",         "voiced"],
+  "\u025f": ["voiced_stop",        "obstruent", "palatal",       "voiced"],
+
+  "\u03b2": ["voiced_approximant", "obstruent", "labial",        "voiced"],
+  "\u00f0": ["voiced_approximant", "obstruent", "dental",        "voiced"],
+  "\u0263": ["voiced_approximant", "obstruent", "velar",         "voiced"],
+
+  "f":    ["voiceless_fricative",  "obstruent", "labiodental",   "voiceless"],
+  "s":    ["voiceless_fricative",  "obstruent", "alveolar",      "voiceless"],
+  "\u03b8": ["voiceless_fricative","obstruent", "dental",        "voiceless"],
+  "x":    ["voiceless_fricative",  "obstruent", "velar",         "voiceless"],
+  "h":    ["voiceless_fricative",  "obstruent", "glottal",       "voiceless"], // aspirated /s/ and /x/ allophone in the realigned corpus
+  "\u00e7": ["voiceless_fricative","obstruent", "palatal",       "voiceless"],
+  "\u0283": ["voiceless_fricative","obstruent", "postalveolar",  "voiceless"],
+
+  "\u029d": ["voiced_fricative",   "obstruent", "palatal",       "voiced"],
+
+  "t\u0283": ["affricate",         "obstruent", "postalveolar",  "voiceless"],
+  "\u025f\u029d": ["affricate",    "obstruent", "palatal",       "voiced"],
+
+  "m":    ["nasal",                "sonorant",  "labial",        "voiced"],
+  "n":    ["nasal",                "sonorant",  "alveolar",      "voiced"],
+  "\u0272": ["nasal",              "sonorant",  "palatal",       "voiced"],
+  "\u014b": ["nasal",              "sonorant",  "velar",         "voiced"],
+
+  "l":    ["lateral",              "sonorant",  "alveolar",      "voiced"],
+  "\u028e": ["lateral",            "sonorant",  "palatal",       "voiced"],
+
+  "\u027e": ["rhotic",             "sonorant",  "alveolar",      "voiced"],
+  "r":    ["rhotic",               "sonorant",  "alveolar",      "voiced"],
+
+  "j":    ["glide",                "sonorant",  "palatal",       "voiced"],
+  "w":    ["glide",                "sonorant",  "labiovelar",    "voiced"],
+
+  // Vowels and word boundaries aren't part of the obstruent voicing
+  // contrast (Correa/Hossain's claim is specifically about consonants) --
+  // tagged "n/a" at this level rather than left out, so a vowel-context or
+  // boundary-context token still classifies to SOMETHING at every level
+  // instead of silently vanishing from env-category counts.
+  "a":    ["vowel",                "vowel",     "central",       "n/a"],
+  "e":    ["vowel",                "vowel",     "front",         "n/a"],
+  "i":    ["vowel",                "vowel",     "front",         "n/a"],
+  "o":    ["vowel",                "vowel",     "back",          "n/a"],
+  "u":    ["vowel",                "vowel",     "back",          "n/a"],
+
+  "#":    ["boundary",             "boundary",  "boundary",      "n/a"],
+};
+const ENV_LEVEL_INDEX = {detailed_class:0, broad_class:1, place:2, voicing:3};
+function classifyPhone(phone, level){
+  const entry = PHONE_CLASSES[phone];
+  if (!entry) return "unknown";
+  return entry[ENV_LEVEL_INDEX[level]];
+}
+// All distinct categories present in the data for a given side ("previous"/
+// "succeeding") and granularity level -- recomputed only when either changes
+// (see the env-side/env-level handlers in buildControlsUI), not on every
+// render, since it depends on the full uploaded dataset, not the filtered
+// subset.
+function computeEnvCategories(side, level){
+  const col = side === "previous" ? state.prevCol : state.nextCol;
+  if (!col) return [];
+  const set = new Set();
+  state.rows.forEach(r => set.add(classifyPhone(String(r[col]), level)));
+  return Array.from(set).sort();
+}
+
+// ==============================================================================
+// CSV LOADING + COLUMN DETECTION
+// ==============================================================================
+// Each lookup accepts the English column names of the original CSV AND the
+// Spanish names of the re-extracted tokens.csv (grupo, sexo, hablante_letra,
+// vocal, palabra, previo, siguiente, inicio_ms, fin_ms, duracion_ms, ...).
+function detectColumns(headers){
+  const lower = headers.map(h => h.toLowerCase());
+  const find = (...names) => {
+    for (const name of names){
+      const i = lower.indexOf(name);
+      if (i !== -1) return headers[i];
+    }
+    return null;
+  };
+  const groupCol = find("group", "grupo");
+  // tokens.csv: the speaker letter is unique within (grupo, sexo); the number
+  // (hablante_num) is not unique across groups, so it is only shown in the tooltip.
+  const speakerCol = find("speaker", "hablante_letra", "hablante");
+  const numCol = find("hablante_num");
+  const vowelCol = find("vowel", "vocal");
+  // Optional -- only used for the token hover tooltip. Gracefully absent if
+  // the file doesn't have them (the tooltip just omits that line).
+  const wordCol = find("word", "palabra");
+  const timeCol = find("time", "start", "start_ms", "onset", "t0", "inicio_ms");
+  // Optional -- paired with timeCol to compute duration (endCol - timeCol)
+  // once at load time, see ingestRows(). Absent just as gracefully as
+  // timeCol: duration-based analysis (Context contrast panel) stays
+  // unavailable rather than erroring.
+  const endCol = find("end", "end_ms", "offset", "t1", "fin_ms");
+  // tokens.csv ships the duration already rounded to 10 ms (duracion_ms); when
+  // present it is used as-is instead of end - start.
+  const durCol = find("duracion_ms", "duration_ms", "duration");
+  // Optional -- unlock the Gender filter/color-scheme and the Environment
+  // context filter respectively. Both gracefully absent: sections just stay
+  // hidden if the file doesn't have them.
+  const genderCol = find("gender", "sexo");
+  const prevCol = find("previous_sound", "previo");
+  const nextCol = find("succeeding_sound", "siguiente");
+  // tokens.csv also carries the context with allophones collapsed (c->k,
+  // ç->x, ɟʝ/ʃ->ʝ); offered as a switch in the Environment section.
+  const prevAltCol = find("previo_colapsado");
+  const nextAltCol = find("siguiente_colapsado");
+  // Optional categorical filters (stress, word position, syllable type,
+  // nucleus), a boolean flag for tokens at the 30 ms aligner floor, and the
+  // reduction marks of an elided neighbour (shown in the tooltip only).
+  const filterCols = EXTRA_FILTER_DEFS
+    .map(d => ({key:d.key, label:d.label, col:find(...d.aliases)}))
+    .filter(d => d.col);
+  const pisoCol = find("piso_mfa");
+  const markPrevCol = find("marca_previa");
+  const markNextCol = find("marca_siguiente");
+
+  // formant pairs already present in the file: any header matching
+  // F1<suffix>, paired with the matching F2<suffix>. Kept mainly so a file
+  // that already has precomputed columns from elsewhere still works --
+  // the primary path now is computeDerivedFormants() below, which only
+  // needs plain raw F1/F2.
+  const pairs = [];
+  headers.forEach(h => {
+    const m = h.match(/^F1(.*)$/i);
+    if (!m) return;
+    const suffix = m[1];
+    const f2candidate = headers.find(h2 => h2.toLowerCase() === ("f2" + suffix).toLowerCase());
+    if (f2candidate){
+      const label = suffix ? suffix.replace(/^[_-]/, "") : "raw";
+      pairs.push({label, f1:h, f2:f2candidate, unit: suffix ? label : "Hz"});
+    }
+  });
+  return {groupCol, speakerCol, numCol, vowelCol, wordCol, timeCol, endCol, durCol, genderCol, prevCol, nextCol,
+          prevAltCol, nextAltCol, filterCols, pisoCol, markPrevCol, markNextCol, pairs};
+}
+// Every column the explorer actually reads; used to drop the rest while
+// parsing (a 430k-row tokens.csv has ~30 columns, most of them unused here).
+function columnsToKeep(headers){
+  const d = detectColumns(headers);
+  const keep = new Set();
+  ["groupCol","speakerCol","numCol","vowelCol","wordCol","timeCol","endCol","durCol","genderCol","prevCol","nextCol",
+   "prevAltCol","nextAltCol","pisoCol","markPrevCol","markNextCol"].forEach(k => { if (d[k]) keep.add(d[k]); });
+  d.filterCols.forEach(f => keep.add(f.col));
+  d.pairs.forEach(p => { keep.add(p.f1); keep.add(p.f2); });
+  return keep;
+}
+// Columns that must stay text: leading zeros in hablante_num ("02485") and
+// letters/words must not be coerced to numbers by dynamicTyping.
+const NO_TYPING = new Set(["hablante_num", "hablante_letra", "token_id", "palabra"]);
+
+// ==============================================================================
+// ON-THE-FLY NORMALIZATION
+// Computed once from raw F1/F2 at load time (not per-render): Bark, Lobanov,
+// Nearey (1 and 2), Watt & Fabricius, and Labov's ANAE method. Stats (speaker means/SDs, the Labov grand
+// mean G) are always computed from the FULL uploaded dataset, never the
+// currently-filtered subset -- otherwise normalized values would shift every
+// time you toggled which speakers/vowels are visible, which would make the
+// scale meaningless as a stable basis for comparison.
+//
+// "Full uploaded dataset" here specifically means every row that survives
+// outlier removal at DEFAULT_OUTLIER_THRESHOLD (see OUTLIER REMOVAL below),
+// NOT literally every row as originally typed -- a speaker's mean/SD (for
+// Lobanov) or log-mean (for Nearey/Labov) is exactly the kind of quantity a
+// handful of mistracked, creaky, or misaligned tokens can drag noticeably,
+// which would then distort the normalized coordinate of every OTHER token
+// from that same speaker, not just the bad ones'. Outliers are still given
+// a normalized value of their own afterward (nothing is left blank just for
+// having been excluded from the fit), using whatever stats their speaker
+// ended up with from their clean tokens.
+//
+// This intentionally does NOT track the live "remove outliers" / threshold
+// controls in the sidebar -- those affect only what's subsequently plotted
+// or counted. Re-deriving Bark/Lobanov/Nearey/Labov on every slider tick
+// would need this whole function to re-run per-render instead of once at
+// load, which is a bigger change than this fix is trying to make. The
+// threshold used here is fixed at DEFAULT_OUTLIER_THRESHOLD regardless of
+// what the user later sets the slider to.
+// ==============================================================================
+const DEFAULT_OUTLIER_THRESHOLD = 2.5; // matches state.outlierThreshold's own default
+
+function stdev(arr, m){
+  const n = arr.length - 1 || 1;
+  return Math.sqrt(arr.reduce((s,v)=>s+(v-m)*(v-m), 0) / n);
+}
+function isNum(v){ return typeof v === "number" && isFinite(v); }
+
+// allRows: every uploaded row -- every one of these gets a normalized value
+//   assigned, including outliers.
+// cleanRows: the subset of allRows to actually FIT each speaker's stats
+//   from (outlier-free, at DEFAULT_OUTLIER_THRESHOLD). Pass allRows again
+//   here if outlier distances haven't been computed yet (e.g. no raw pair).
+function computeDerivedFormants(allRows, cleanRows, groupCol, speakerCol, f1Raw, f2Raw){
+  function keyOf(r){ return String(r[groupCol]) + "|||" + String(r[speakerCol]); }
+
+  const allBySpeaker = new Map();
+  allRows.forEach(r => {
+    const key = keyOf(r);
+    if (!allBySpeaker.has(key)) allBySpeaker.set(key, []);
+    allBySpeaker.get(key).push(r);
+  });
+  const cleanBySpeaker = new Map();
+  cleanRows.forEach(r => {
+    const key = keyOf(r);
+    if (!cleanBySpeaker.has(key)) cleanBySpeaker.set(key, []);
+    cleanBySpeaker.get(key).push(r);
+  });
+  // Fit rows for a given speaker: their clean tokens, unless outlier removal
+  // happened to leave fewer than 2 of them (e.g. a lightly-sampled speaker
+  // whose few tokens all got flagged) -- fall back to their full token set
+  // rather than leaving that speaker with no normalized values at all.
+  function fitRowsFor(key, allSpeakerRows){
+    const clean = cleanBySpeaker.get(key);
+    return (clean && clean.length >= 2) ? clean : allSpeakerRows;
+  }
+
+  // ---- Bark (Traunmuller 1990) -- pure per-value transform, no grouping,
+  // no fitting of any kind, so outlier status is irrelevant here ----
+  function toBark(f){
+    let z = 26.81 * f / (1960 + f) - 0.53;
+    if (z < 2) z += 0.15 * (2 - z);
+    return z;
+  }
+  allRows.forEach(r => {
+    if (isNum(r[f1Raw])) r.F1_bark = toBark(r[f1Raw]);
+    if (isNum(r[f2Raw])) r.F2_bark = toBark(r[f2Raw]);
+  });
+
+  // ---- Lobanov (1971) -- per-speaker z-score, F1 and F2 independently ----
+  allBySpeaker.forEach((applyRows, key) => {
+    const fitRows = fitRowsFor(key, applyRows);
+    const f1s = fitRows.map(r=>r[f1Raw]).filter(isNum);
+    const f2s = fitRows.map(r=>r[f2Raw]).filter(isNum);
+    if (f1s.length < 2 || f2s.length < 2) return;
+    const m1 = mean(f1s), m2 = mean(f2s);
+    const sd1 = stdev(f1s, m1), sd2 = stdev(f2s, m2);
+    if (sd1 <= 0 || sd2 <= 0) return;
+    applyRows.forEach(r => {
+      if (isNum(r[f1Raw])) r.F1_lobanov = (r[f1Raw]-m1) / sd1;
+      if (isNum(r[f2Raw])) r.F2_lobanov = (r[f2Raw]-m2) / sd2;
+    });
+  });
+
+  // ---- Nearey (extrinsic log-mean) -- per-speaker, F1+F2 pooled ----
+  // Deliberately NOT Hz-like (see Labov below for the version that is) --
+  // this is the standard, expected character of Nearey's output.
+  allBySpeaker.forEach((applyRows, key) => {
+    const fitRows = fitRowsFor(key, applyRows);
+    const logs = [];
+    fitRows.forEach(r => {
+      if (isNum(r[f1Raw]) && r[f1Raw]>0) logs.push(Math.log(r[f1Raw]));
+      if (isNum(r[f2Raw]) && r[f2Raw]>0) logs.push(Math.log(r[f2Raw]));
+    });
+    if (!logs.length) return;
+    const S = mean(logs);
+    applyRows.forEach(r => {
+      if (isNum(r[f1Raw]) && r[f1Raw]>0) r.F1_nearey = Math.log(r[f1Raw]) - S;
+      if (isNum(r[f2Raw]) && r[f2Raw]>0) r.F2_nearey = Math.log(r[f2Raw]) - S;
+    });
+  });
+
+  // ---- Nearey 1 (individual log-mean) -- per-speaker, F1 and F2 SEPARATELY ----
+  // Each formant has its own speaker log-mean subtracted (Nearey 1978), as
+  // opposed to the pooled F1+F2 log-mean above (often called Nearey 2 in
+  // the vowel-normalization literature, e.g. the vowels R package).
+  allBySpeaker.forEach((applyRows, key) => {
+    const fitRows = fitRowsFor(key, applyRows);
+    const l1 = [], l2 = [];
+    fitRows.forEach(r => {
+      if (isNum(r[f1Raw]) && r[f1Raw]>0) l1.push(Math.log(r[f1Raw]));
+      if (isNum(r[f2Raw]) && r[f2Raw]>0) l2.push(Math.log(r[f2Raw]));
+    });
+    if (!l1.length || !l2.length) return;
+    const S1 = mean(l1), S2 = mean(l2);
+    applyRows.forEach(r => {
+      if (isNum(r[f1Raw]) && r[f1Raw]>0) r.F1_nearey1 = Math.log(r[f1Raw]) - S1;
+      if (isNum(r[f2Raw]) && r[f2Raw]>0) r.F2_nearey1 = Math.log(r[f2Raw]) - S2;
+    });
+  });
+
+  // ---- Watt & Fabricius (2002) -- speaker-intrinsic centroid method ----
+  // Each speaker's vowel space is treated as a triangle with corners at /i/
+  // (F1 low, F2 high), /a/ (F1 high) and a derived /u'/ point whose F1 and
+  // F2 both equal /i/'s F1. The triangle's centroid S = (S1, S2) is
+  //   S1 = (F1i + F1a + F1i) / 3,   S2 = (F2i + F2a + F1i) / 3
+  // and every token is divided by it: F1' = F1/S1, F2' = F2/S2. Corner
+  // values here are the speaker's mean /i/ and /a/ (from their clean
+  // tokens), so a speaker missing either vowel gets no W&F values.
+  allBySpeaker.forEach((applyRows, key) => {
+    const fitRows = fitRowsFor(key, applyRows);
+    const pick = (v, col) => fitRows
+      .filter(r => String(r[state.vowelCol]) === v && isNum(r[col]))
+      .map(r => r[col]);
+    const i1 = pick("i", f1Raw), i2 = pick("i", f2Raw);
+    const a1 = pick("a", f1Raw), a2 = pick("a", f2Raw);
+    if (!i1.length || !i2.length || !a1.length || !a2.length) return;
+    const F1i = mean(i1), F2i = mean(i2), F1a = mean(a1), F2a = mean(a2);
+    const S1 = (2*F1i + F1a) / 3;
+    const S2 = (F2i + F2a + F1i) / 3;
+    if (!(S1 > 0) || !(S2 > 0)) return;
+    applyRows.forEach(r => {
+      if (isNum(r[f1Raw])) r.F1_wf = r[f1Raw] / S1;
+      if (isNum(r[f2Raw])) r.F2_wf = r[f2Raw] / S2;
+    });
+  });
+
+  // ---- Labov's ANAE method (Labov, Ash & Boberg 2006: 39-40) ----
+  // A modification of Nearey that's speaker-EXTRINSIC: one grand log-mean G
+  // shared by everyone, a per-speaker log-mean S (same quantity Nearey
+  // uses), and a per-speaker scaling factor exp(G-S) multiplied back onto
+  // the raw Hz values -- so unlike Nearey, the output stays Hz-like and
+  // comparable in absolute terms across speakers.
+  // NORM's reference implementation defaults G to 6.896874, a constant
+  // Labov derived from 345 Telsur American-English speakers. That number
+  // has no particular claim on a different corpus/language, so G here is
+  // computed from THIS dataset instead (its clean subset) -- the grand
+  // log-mean of every non-outlier F1 and F2 value across everyone uploaded,
+  // not the historical constant.
+  {
+    const allLogs = [];
+    cleanRows.forEach(r => {
+      if (isNum(r[f1Raw]) && r[f1Raw]>0) allLogs.push(Math.log(r[f1Raw]));
+      if (isNum(r[f2Raw]) && r[f2Raw]>0) allLogs.push(Math.log(r[f2Raw]));
+    });
+    if (allLogs.length){
+      const G = mean(allLogs);
+      allBySpeaker.forEach((applyRows, key) => {
+        const fitRows = fitRowsFor(key, applyRows);
+        const logs = [];
+        fitRows.forEach(r => {
+          if (isNum(r[f1Raw]) && r[f1Raw]>0) logs.push(Math.log(r[f1Raw]));
+          if (isNum(r[f2Raw]) && r[f2Raw]>0) logs.push(Math.log(r[f2Raw]));
+        });
+        if (!logs.length) return;
+        const scaling = Math.exp(G - mean(logs));
+        applyRows.forEach(r => {
+          if (isNum(r[f1Raw])) r.F1_labov = r[f1Raw] * scaling;
+          if (isNum(r[f2Raw])) r.F2_labov = r[f2Raw] * scaling;
+        });
+      });
+    }
+  }
+
+  const pairs = [];
+  if (allRows.some(r=>isNum(r.F1_bark)))    pairs.push({label:"Bark (computed)", f1:"F1_bark", f2:"F2_bark", unit:"Bark"});
+  if (allRows.some(r=>isNum(r.F1_lobanov))) pairs.push({label:"Lobanov z-score (computed)", f1:"F1_lobanov", f2:"F2_lobanov", unit:"z-score"});
+  if (allRows.some(r=>isNum(r.F1_nearey1))) pairs.push({label:"Nearey 1, per-formant log-mean (computed)", f1:"F1_nearey1", f2:"F2_nearey1", unit:"log-ratio"});
+  if (allRows.some(r=>isNum(r.F1_nearey)))  pairs.push({label:"Nearey 2, pooled log-mean (computed)", f1:"F1_nearey", f2:"F2_nearey", unit:"log-ratio"});
+  if (allRows.some(r=>isNum(r.F1_wf)))      pairs.push({label:"Watt & Fabricius (computed)", f1:"F1_wf", f2:"F2_wf", unit:"ratio to centroid"});
+  if (allRows.some(r=>isNum(r.F1_labov)))   pairs.push({label:"Labov ANAE (computed)", f1:"F1_labov", f2:"F2_labov", unit:"Hz, ANAE-scaled"});
+  return pairs;
+}
+
+// ==============================================================================
+// OUTLIER REMOVAL
+// Computed ONCE at load time (like the normalized formants above), on RAW
+// F1/F2 (Hz) -- not whichever formant pair happens to be selected in the UI
+// -- so a mistracked formant is judged as an outlier on the same absolute
+// scale everywhere, and toggling normalization schemes doesn't change which
+// tokens count as outliers out from under you.
+//
+// Distance is Mahalanobis distance from each token to its OWN (group,
+// speaker, vowel) cell's mean, using that cell's own covariance -- same
+// math as mahalanobisSq()/the confidence ellipses further down, just run
+// once here on the raw scale and cached on the row, rather than
+// recomputed per-render for whatever's currently selected. A cell needs at
+// least 5 tokens for its covariance to be worth trusting (same floor used
+// for the heatmap KDE); smaller cells are left unmarked (NaN) rather than
+// having tokens speculatively discarded on a shaky covariance estimate.
+//
+// This runs BEFORE computeDerivedFormants() (see the ingestRows() call
+// site) specifically so its output can be used to keep outliers from
+// contaminating the normalization stats above -- not just the other way
+// around.
+// ==============================================================================
+function computeOutlierDistances(rows, groupCol, speakerCol, vowelCol, f1Raw, f2Raw){
+  const cells = new Map();
+  rows.forEach(r => {
+    const key = String(r[groupCol]) + "|||" + String(r[speakerCol]) + "|||" + String(r[vowelCol]);
+    if (!cells.has(key)) cells.set(key, []);
+    cells.get(key).push(r);
+  });
+  cells.forEach(cellRows => {
+    const xs = cellRows.map(r=>r[f2Raw]).filter(isNum);
+    const ys = cellRows.map(r=>r[f1Raw]).filter(isNum);
+    if (xs.length < 5){
+      cellRows.forEach(r => { r.__outlierDist = NaN; });
+      return;
+    }
+    const {varX, varY, covXY, meanX, meanY} = covMatrix(xs, ys);
+    const det = varX*varY - covXY*covXY;
+    if (det <= 0){
+      cellRows.forEach(r => { r.__outlierDist = NaN; });
+      return;
+    }
+    const invA = varY/det, invB = -covXY/det, invD = varX/det;
+    cellRows.forEach(r => {
+      if (!isNum(r[f2Raw]) || !isNum(r[f1Raw])){ r.__outlierDist = NaN; return; }
+      const dx = r[f2Raw]-meanX, dy = r[f1Raw]-meanY;
+      const dSq = dx*(invA*dx+invB*dy) + dy*(invB*dx+invD*dy);
+      r.__outlierDist = Math.sqrt(Math.max(dSq, 0));
+    });
+  });
+}
+
+function ingestRows(rows, fileName, allHeaders){
+  if (!rows.length){ showReadoutError("The file parsed but contained no rows."); return; }
+  const headers = Object.keys(rows[0]);
+  const {groupCol, speakerCol, numCol, vowelCol, wordCol, timeCol, endCol, durCol, genderCol, prevCol, nextCol,
+         prevAltCol, nextAltCol, filterCols, pisoCol, markPrevCol, markNextCol, pairs} = detectColumns(headers);
+
+  const missing = [];
+  if (!speakerCol) missing.push("speaker (or hablante_letra)");
+  if (!vowelCol) missing.push("vowel (or vocal)");
+  if (!pairs.length) missing.push("an F1/F2 column pair (plain F1 and F2 columns, in Hz, are all that's needed)");
+  if (missing.length){
+    showReadoutError(
+      `Couldn't find ${missing.join(", ")} in this file. Columns found: ${(allHeaders || headers).join(", ")}`
+    );
+    return;
+  }
+
+  heatmapCache.clear();
+  state.rows = rows;
+  state.columns = headers;
+  state.groupCol = groupCol;      // may be null -- handled below
+  state.speakerCol = speakerCol;
+  state.vowelCol = vowelCol;
+  state.wordCol = wordCol;        // null if not present -- tooltip just omits it
+  state.timeCol = timeCol;        // null if not present -- tooltip just omits it
+  state.endCol = endCol;          // null if not present -- duration stays unavailable
+  state.genderCol = genderCol;    // null if not present -- Gender section stays hidden
+  state.prevColRaw = prevCol;     // the aligned context phones
+  state.nextColRaw = nextCol;
+  state.prevAltCol = prevAltCol;  // null unless the file has previo_colapsado / siguiente_colapsado
+  state.nextAltCol = nextAltCol;
+  state.collapsedContext = false; // a new file always starts on the aligned context
+  state.prevCol = prevCol;        // active context columns (swapped by the collapsed-context switch)
+  state.nextCol = nextCol;        // null if not present -- Environment section stays hidden
+  state.numCol = numCol;          // hablante_num, tooltip only
+  state.durCol = durCol;
+  state.pisoCol = pisoCol;
+  state.markPrevCol = markPrevCol;
+  state.markNextCol = markNextCol;
+  state.excludeFloor = false;
+  state.extraFilters = filterCols.map(f => {
+    const values = Array.from(new Set(rows.map(r => String(r[f.col])))).sort();
+    return {key:f.key, label:f.label, col:f.col, values, selected:new Set(values)};
+  });
+  state.fileName = fileName;
+
+  // Duration: the file's own duration column when it has one (tokens.csv:
+  // duracion_ms, already rounded to 10 ms); otherwise (endCol - timeCol),
+  // computed once here alongside the other per-row derived values -- only
+  // if the file has BOTH a start and an end time column. Left as NaN (not 0
+  // or omitted) when either is missing or non-numeric, or when end <= start
+  // (a malformed interval), so it reads as "no data" rather than a false
+  // zero-duration token downstream.
+  state.hasDurationData = !!(durCol || (timeCol && endCol));
+  if (durCol){
+    rows.forEach(r => { const d = r[durCol]; r.__duration = (isNum(d) && d > 0) ? d : NaN; });
+  } else if (state.hasDurationData){
+    rows.forEach(r => {
+      const t0 = r[timeCol], t1 = r[endCol];
+      r.__duration = (isNum(t0) && isNum(t1) && t1 > t0) ? (t1 - t0) : NaN;
+    });
+  } else {
+    rows.forEach(r => { r.__duration = NaN; });
+  }
+
+  // A previously loaded file may have set a gender-dependent color scheme;
+  // if this file doesn't have a gender column, fall back to something that
+  // still makes sense rather than silently rendering zero categories.
+  if (!genderCol && (state.colorScheme === "gender" || state.colorScheme === "vowel-gender")){
+    state.colorScheme = "vowel";
+  }
+  // Same idea for an env-dependent color scheme carried over from a
+  // previous file that had previous_sound/succeeding_sound columns.
+  if (!prevCol && !nextCol && (state.colorScheme === "env" || state.colorScheme === "vowel-env")){
+    state.colorScheme = "vowel";
+  }
+
+  // If there's no group column, treat everything as one implicit group so the
+  // rest of the tool (which is written around group+speaker) still works.
+  // Resolved BEFORE computeDerivedFormants(), which groups by group+speaker.
+  if (!groupCol){
+    rows.forEach(r => r.__group = "all");
+    state.groupCol = "__group";
+  }
+
+  // Some corpora reuse small integer speaker IDs across genders within the
+  // same group -- e.g. group "ar" might have a female speaker AND a male
+  // speaker both stored as speaker=5 (this happens in the corpus this tool
+  // was originally built around: the raw speaker column has far fewer
+  // distinct values than there are actual speakers). EVERY part of this
+  // tool identifies "a speaker" purely by the (group, speaker) pair --
+  // normalization stats, outlier cells, the speaker checkbox tree, the
+  // pairwise speaker-distance stats -- so an ID collision like that would
+  // otherwise silently pool two different people's tokens together
+  // everywhere at once. Folding gender into the speaker value itself, once,
+  // here, before anything else reads speakerCol, fixes every one of those
+  // downstream usages in a single place instead of requiring each of them
+  // to separately know about genderCol.
+  if (genderCol){
+    rows.forEach(r => { r[speakerCol] = String(r[genderCol]) + "-" + String(r[speakerCol]); });
+  }
+
+  // Raw pair (plain F1/F2, no suffix) is what normalization gets computed
+  // from. Any OTHER file-provided pairs (suffix != "") are kept too, in
+  // case the file already has precomputed columns from elsewhere, but are
+  // labeled distinctly so it's clear they didn't come from this tool.
+  const rawPair = pairs.find(p => p.label === "raw");
+  const otherFilePairs = pairs.filter(p => p.label !== "raw")
+    .map(p => ({...p, label: p.label + " (from file)"}));
+
+  // Outlier distances are computed FIRST, before normalization, on the raw
+  // pair (see computeOutlierDistances for why raw rather than whatever's
+  // selected) -- specifically so computeDerivedFormants() can fit its
+  // per-speaker stats only from the non-outlier subset, rather than having
+  // a handful of mistracked tokens drag a speaker's mean/SD (Lobanov) or
+  // log-mean (Nearey/Labov) and distort every other token from that same
+  // speaker. If there's no plain raw F1/F2 pair (only pre-normalized
+  // columns from elsewhere), there's no single stable scale to judge
+  // outliers against, so the feature stays unavailable for this file --
+  // section hidden, nothing silently filtered, and normalization falls
+  // back to fitting from every row since there's no outlier flag to clean
+  // by.
+  let cleanRows = rows;
+  if (rawPair){
+    computeOutlierDistances(rows, state.groupCol, speakerCol, vowelCol, rawPair.f1, rawPair.f2);
+    state.hasOutlierData = true;
+    cleanRows = rows.filter(r => !(isNum(r.__outlierDist) && r.__outlierDist > DEFAULT_OUTLIER_THRESHOLD));
+  } else {
+    rows.forEach(r => { r.__outlierDist = NaN; });
+    state.hasOutlierData = false;
+  }
+
+  const computedPairs = rawPair
+    ? computeDerivedFormants(rows, cleanRows, state.groupCol, speakerCol, rawPair.f1, rawPair.f2)
+    : [];
+
+  state.formantPairs = (rawPair ? [rawPair] : []).concat(computedPairs, otherFilePairs);
+  if (!state.formantPairs.length) state.formantPairs = pairs; // fallback: whatever was found
+  state.chosenPairIdx = 0;
+
+  const groupSet = new Set();
+  const speakersByGroup = {};
+  rows.forEach(r => {
+    const g = String(r[state.groupCol]);
+    const s = String(r[speakerCol]);
+    groupSet.add(g);
+    if (!speakersByGroup[g]) speakersByGroup[g] = new Set();
+    speakersByGroup[g].add(s);
+  });
+  state.groups = Array.from(groupSet).sort();
+  state.speakersByGroup = {};
+  // Natural order inside each gender: shorter ids first (A, B, ... Z, AA, AB; 9 before 12), alphabetical otherwise.
+  const speakerCmp = (a, b) => {
+    const [ga, ...ra] = a.split("-"), [gb, ...rb] = b.split("-");
+    if (ga !== gb) return ga.localeCompare(gb);
+    const sa = ra.join("-"), sb = rb.join("-");
+    return sa.length - sb.length || sa.localeCompare(sb);
+  };
+  state.groups.forEach(g => { state.speakersByGroup[g] = Array.from(speakersByGroup[g]).sort(speakerCmp); });
+
+  const vowelSet = new Set(rows.map(r => String(r[vowelCol])));
+  const canonicalPresent = CANONICAL_VOWEL_ORDER.filter(v => vowelSet.has(v));
+  const others = Array.from(vowelSet).filter(v => !CANONICAL_VOWEL_ORDER.includes(v)).sort();
+  state.vowels = canonicalPresent.concat(others);
+
+  // Default selection: only the FIRST group (alphabetically), not everything --
+  // a fresh upload plots one dialect at a time rather than pooling all of
+  // them together. Use the "all" button in Speakers to restore the old
+  // pool-everything behavior.
+  state.selectedSpeakers = new Set();
+  const firstGroup = state.groups[0];
+  if (firstGroup){
+    state.speakersByGroup[firstGroup].forEach(s => state.selectedSpeakers.add(firstGroup + "|||" + s));
+  }
+  state.selectedVowels = new Set(state.vowels);
+
+  // Gender: detect distinct values and select all of them by default (the
+  // group-narrowing above already limits what's plotted; gender doesn't need
+  // its own default narrowing on top of that).
+  if (genderCol){
+    state.genders = Array.from(new Set(rows.map(r => String(r[genderCol])))).sort();
+  } else {
+    state.genders = [];
+  }
+  state.selectedGenders = new Set(state.genders);
+
+  // Environment context: default to previous_sound if present, else
+  // succeeding_sound if that's the only one available.
+  state.envSide = prevCol ? "previous" : (nextCol ? "succeeding" : "previous");
+  state.envCategories = computeEnvCategories(state.envSide, state.envLevel);
+  state.selectedEnvCategories = new Set(state.envCategories);
+
+  document.getElementById("file-status").textContent = fileName;
+  document.getElementById("file-status").classList.add("loaded");
+  document.getElementById("stats-toggle").disabled = false;
+  document.getElementById("distribution-toggle").disabled = false;
+  document.getElementById("export-svg").disabled = false;
+  document.getElementById("export-png").disabled = false;
+  document.getElementById("empty-state").style.display = "none";
+
+  buildControlsUI();
+  render();
+}
+
+function showReadoutError(msg){
+  const el = document.getElementById("readout");
+  el.textContent = msg;
+  el.classList.add("error");
+}
+
+document.getElementById("csv-input").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  // Row-by-row (step) so columns the explorer never reads can be dropped as
+  // they arrive: tokens.csv has ~430k rows x 30 columns, which would
+  // otherwise all sit in memory as JS objects.
+  const rows = [];
+  let keep = null, fields = null;
+  document.getElementById("file-status").textContent = "parsing " + file.name + "…";
+  Papa.parse(file, {
+    header:true, skipEmptyLines:true,
+    dynamicTyping: (field) => !NO_TYPING.has(String(field).toLowerCase()),
+    step: (res) => {
+      const raw = Array.isArray(res.data) ? res.data[0] : res.data;
+      if (!raw) return;
+      if (!keep){
+        fields = (res.meta && res.meta.fields) || Object.keys(raw);   // in step mode complete() gets no results object
+        keep = columnsToKeep(fields);
+      }
+      const row = {};
+      keep.forEach(c => { row[c] = raw[c]; });
+      rows.push(row);
+    },
+    complete: () => ingestRows(rows, file.name, fields),
+    error: (err) => showReadoutError("Couldn't parse that CSV: " + err.message),
+  });
+});
+
+// ==============================================================================
+// THEME (light/dark)
+// ==============================================================================
+function applyTheme(theme){
+  document.documentElement.setAttribute("data-theme", theme);
+  document.getElementById("theme-label").textContent = theme;
+  document.getElementById("theme-toggle").querySelector(".icon").innerHTML = (theme === "light") ? "&#9728;" : "&#9789;";
+  try { localStorage.setItem("vowel-explorer-theme", theme); } catch(e){ /* private mode etc -- fine, just won't persist */ }
+  if (state.rows.length) render(); // re-render so entityShade's theme-aware range updates
+}
+(function initTheme(){
+  let saved = null;
+  try { saved = localStorage.getItem("vowel-explorer-theme"); } catch(e){ /* ignore */ }
+  applyTheme(saved === "light" ? "light" : "dark");
+})();
+document.getElementById("theme-toggle").addEventListener("click", () => {
+  const current = document.documentElement.getAttribute("data-theme");
+  applyTheme(current === "light" ? "dark" : "light");
+});
+
+document.getElementById("load-example").addEventListener("click", () => {
+  ingestRows(buildExampleRows(), "example_data.csv (synthetic)");
+});
+
+function buildExampleRows(){
+  // Small synthetic set: 2 groups x 2 speakers x 5 vowels, just enough to
+  // exercise every mode -- not real phonetic data.
+  const vowelBase = {i:[2200,300], e:[1900,450], a:[1500,700], o:[900,550], u:[800,350]};
+  const wordByVowel = {i:"si", e:"tres", a:"casa", o:"todo", u:"luna"};
+  const groupShift = {ar:[0,0], ve:[120,-60]};
+  const genderBySpeaker = {A:"f", B:"m"};
+  const contexts = ["s","n","j","k","#"]; // small illustrative set of previous/succeeding phones
+  const rows = [];
+  let seed = 7;
+  let tclock = 0;
+  function rand(){ seed = (seed*9301+49297) % 233280; return seed/233280; }
+  function gauss(){ let u=0,v=0; while(u===0) u=rand(); while(v===0) v=rand(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+  ["ar","ve"].forEach(g => {
+    ["A","B"].forEach(s => {
+      Object.keys(vowelBase).forEach(v => {
+        const [f2m,f1m] = vowelBase[v];
+        const [gs2,gs1] = groupShift[g];
+        for (let i=0;i<25;i++){
+          tclock += 400 + rand()*800;
+          rows.push({
+            group:g, speaker:s, gender: genderBySpeaker[s], vowel:v, word: wordByVowel[v], time: Math.round(tclock),
+            previous_sound: contexts[i % contexts.length],
+            succeeding_sound: contexts[(i+2) % contexts.length],
+            F1: f1m + gs1 + gauss()*35, F2: f2m + gs2 + gauss()*70,
+          });
+        }
+      });
+    });
+  });
+  return rows;
+}
+
+// ==============================================================================
+// CONTROLS UI (built dynamically from the parsed data)
+// ==============================================================================
+function buildControlsUI(){
+  ["section-formant","section-speakers","section-vowels","section-display","section-color","section-ellipse","section-reference","section-axis"]
+    .forEach(id => document.getElementById(id).style.display = "block");
+  document.getElementById("section-gender").style.display = state.genderCol ? "block" : "none";
+  document.getElementById("section-environment").style.display = (state.prevCol || state.nextCol) ? "block" : "none";
+  document.getElementById("section-outliers").style.display = state.hasOutlierData ? "block" : "none";
+  document.getElementById("scheme-gender-label").style.display = state.genderCol ? "flex" : "none";
+  document.getElementById("scheme-vowel-gender-label").style.display = state.genderCol ? "flex" : "none";
+  const hasEnv = !!(state.prevCol || state.nextCol);
+  document.getElementById("scheme-env-label").style.display = hasEnv ? "flex" : "none";
+  document.getElementById("scheme-vowel-env-label").style.display = hasEnv ? "flex" : "none";
+
+  const outlierToggle = document.getElementById("outlier-toggle");
+  outlierToggle.checked = state.removeOutliers;
+  outlierToggle.onchange = () => { state.removeOutliers = outlierToggle.checked; render(); };
+  const outlierThresholdInput = document.getElementById("outlier-threshold");
+  outlierThresholdInput.value = state.outlierThreshold;
+  outlierThresholdInput.onchange = () => {
+    const v = parseFloat(outlierThresholdInput.value);
+    state.outlierThreshold = (isFinite(v) && v > 0) ? v : 2.5;
+    outlierThresholdInput.value = state.outlierThreshold;
+    render();
+  };
+
+  // formant pairs
+  const fSelect = document.getElementById("formant-select");
+  fSelect.innerHTML = "";
+  state.formantPairs.forEach((p, i) => {
+    const opt = document.createElement("option");
+    opt.value = i; opt.textContent = `${p.label}  (${p.f1} / ${p.f2})`;
+    fSelect.appendChild(opt);
+  });
+  fSelect.value = state.chosenPairIdx;
+  fSelect.onchange = () => { state.chosenPairIdx = +fSelect.value; render(); };
+
+  // speaker tree
+  const tree = document.getElementById("speaker-tree");
+  tree.innerHTML = "";
+  state.groups.forEach(g => {
+    const speakersInGroup = state.speakersByGroup[g];
+    const selectedCount = speakersInGroup.filter(s => state.selectedSpeakers.has(g+"|||"+s)).length;
+
+    const block = document.createElement("div");
+    block.className = "group-block";
+    const head = document.createElement("div");
+    head.className = "group-head";
+
+    const groupCb = document.createElement("input");
+    groupCb.type = "checkbox";
+    groupCb.className = "group-checkbox";
+    groupCb.checked = selectedCount === speakersInGroup.length;
+    groupCb.indeterminate = selectedCount > 0 && selectedCount < speakersInGroup.length;
+
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "group-name";
+    nameSpan.innerHTML = `<span class="chev">&#9662;</span>${state.groupCol === "__group" ? "all speakers" : g}`;
+
+    head.appendChild(groupCb);
+    head.appendChild(nameSpan);
+
+    const list = document.createElement("div");
+    list.className = "speaker-list";
+    speakersInGroup.forEach(s => {
+      const key = g + "|||" + s;
+      const lbl = document.createElement("label");
+      lbl.className = "check";
+      lbl.innerHTML = `<input type="checkbox" data-speaker="${key}" ${state.selectedSpeakers.has(key)?"checked":""}> ${s}`;
+      lbl.querySelector("input").addEventListener("change", (e) => {
+        e.target.checked ? state.selectedSpeakers.add(key) : state.selectedSpeakers.delete(key);
+        buildControlsUI(); // rebuild so the group checkbox's checked/indeterminate state stays in sync
+        render();
+      });
+      list.appendChild(lbl);
+    });
+
+    // Group checkbox toggles every speaker in the group at once -- checked
+    // (or indeterminate, i.e. partially selected) means "turn them all off";
+    // unchecked means "turn them all on".
+    groupCb.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const turnOn = !(selectedCount === speakersInGroup.length);
+      speakersInGroup.forEach(s => {
+        const key = g + "|||" + s;
+        turnOn ? state.selectedSpeakers.add(key) : state.selectedSpeakers.delete(key);
+      });
+      buildControlsUI();
+      render();
+    });
+
+    // Clicking the group NAME (not the checkbox) expands/collapses the list.
+    nameSpan.addEventListener("click", () => {
+      list.style.display = list.style.display === "none" ? "flex" : "none";
+      nameSpan.querySelector(".chev").innerHTML = list.style.display === "none" ? "&#9656;" : "&#9662;";
+    });
+
+    block.appendChild(head); block.appendChild(list);
+    tree.appendChild(block);
+  });
+
+  // vowel grid
+  const vGrid = document.getElementById("vowel-grid");
+  vGrid.innerHTML = "";
+  state.vowels.forEach(v => {
+    const lbl = document.createElement("label");
+    lbl.className = "check";
+    lbl.style.borderColor = `hsl(${vowelHue(v)},60%,35%)`;
+    lbl.innerHTML = `<input type="checkbox" data-vowel="${v}" ${state.selectedVowels.has(v)?"checked":""}> ${v}`;
+    lbl.querySelector("input").addEventListener("change", (e) => {
+      e.target.checked ? state.selectedVowels.add(v) : state.selectedVowels.delete(v);
+      render();
+    });
+    vGrid.appendChild(lbl);
+  });
+
+  // gender grid (only meaningful if a gender column was detected)
+  const gGrid = document.getElementById("gender-grid");
+  gGrid.innerHTML = "";
+  state.genders.forEach(gd => {
+    const lbl = document.createElement("label");
+    lbl.className = "check";
+    lbl.innerHTML = `<input type="checkbox" data-gender="${gd}" ${state.selectedGenders.has(gd)?"checked":""}> ${gd}`;
+    lbl.querySelector("input").addEventListener("change", (e) => {
+      e.target.checked ? state.selectedGenders.add(gd) : state.selectedGenders.delete(gd);
+      render();
+    });
+    gGrid.appendChild(lbl);
+  });
+
+  // optional token filters (stress / word position / syllable type / nucleus)
+  // and the 30 ms aligner-floor switch -- only for files that carry them.
+  const filtersSection = document.getElementById("section-filters");
+  const filtersBody = document.getElementById("filters-body");
+  filtersBody.innerHTML = "";
+  filtersSection.style.display = (state.extraFilters.length || state.pisoCol) ? "block" : "none";
+  state.extraFilters.forEach(f => {
+    const head = document.createElement("div");
+    head.className = "mini-actions";
+    head.innerHTML = `<span style="color:var(--text-dim);font-size:11px;margin-right:auto;">${f.label} <span style="opacity:.7">(${f.col})</span></span>`;
+    ["all","none"].forEach(kind => {
+      const b = document.createElement("button");
+      b.className = "link"; b.textContent = kind;
+      b.onclick = () => {
+        f.selected = kind === "all" ? new Set(f.values) : new Set();
+        buildControlsUI();
+        render();
+      };
+      head.appendChild(b);
+    });
+    const grid = document.createElement("div");
+    grid.className = "vowel-grid";
+    grid.style.marginBottom = "10px";
+    f.values.forEach(val => {
+      const lbl = document.createElement("label");
+      lbl.className = "check";
+      lbl.innerHTML = `<input type="checkbox" ${f.selected.has(val)?"checked":""}> ${val}`;
+      lbl.querySelector("input").addEventListener("change", (e) => {
+        e.target.checked ? f.selected.add(val) : f.selected.delete(val);
+        render();
+      });
+      grid.appendChild(lbl);
+    });
+    filtersBody.appendChild(head);
+    filtersBody.appendChild(grid);
+  });
+  if (state.pisoCol){
+    const lbl = document.createElement("label");
+    lbl.className = "check";
+    lbl.style.cssText = "border:1px solid var(--border);border-radius:5px;padding:6px 9px;";
+    lbl.innerHTML = `<input type="checkbox" ${state.excludeFloor?"checked":""}> Exclude 30 ms aligner-floor tokens (${state.pisoCol})`;
+    lbl.title = "Tokens flagged as exactly 30 ms: the duration is an upper bound set by the aligner, not a measurement. Including or excluding them is an analysis decision.";
+    lbl.querySelector("input").addEventListener("change", (e) => { state.excludeFloor = e.target.checked; render(); });
+    filtersBody.appendChild(lbl);
+  }
+
+  // collapsed-allophone context switch (previo_colapsado / siguiente_colapsado)
+  const collapsedRow = document.getElementById("env-collapsed-row");
+  const collapsedToggle = document.getElementById("env-collapsed-toggle");
+  collapsedRow.style.display = (state.prevAltCol || state.nextAltCol) ? "block" : "none";
+  collapsedToggle.checked = state.collapsedContext;
+  collapsedToggle.onchange = () => {
+    state.collapsedContext = collapsedToggle.checked;
+    state.prevCol = (state.collapsedContext && state.prevAltCol) ? state.prevAltCol : state.prevColRaw;
+    state.nextCol = (state.collapsedContext && state.nextAltCol) ? state.nextAltCol : state.nextColRaw;
+    state.envCategories = computeEnvCategories(state.envSide, state.envLevel);
+    state.selectedEnvCategories = new Set(state.envCategories);
+    state.contrastGroupA.clear();
+    state.contrastGroupB.clear();
+    state.contrastResults = null;
+    buildControlsUI();
+    render();
+  };
+
+  // environment context: side + granularity radios, then the category grid
+  // (rebuilt whenever side/level changes, since the set of possible
+  // categories depends on both).
+  function buildEnvGrid(){
+    const grid = document.getElementById("env-grid");
+    grid.innerHTML = "";
+    state.envCategories.forEach(cat => {
+      const lbl = document.createElement("label");
+      lbl.className = "check";
+      lbl.innerHTML = `<input type="checkbox" data-env="${cat}" ${state.selectedEnvCategories.has(cat)?"checked":""}> ${cat}`;
+      lbl.querySelector("input").addEventListener("change", (e) => {
+        e.target.checked ? state.selectedEnvCategories.add(cat) : state.selectedEnvCategories.delete(cat);
+        render();
+      });
+      grid.appendChild(lbl);
+    });
+  }
+  document.querySelectorAll('input[name="env-side"]').forEach(input => {
+    input.checked = (input.value === state.envSide);
+    input.disabled = (input.value === "previous" && !state.prevCol) || (input.value === "succeeding" && !state.nextCol);
+    input.onchange = () => {
+      state.envSide = input.value;
+      state.envCategories = computeEnvCategories(state.envSide, state.envLevel);
+      state.selectedEnvCategories = new Set(state.envCategories);
+      state.contrastGroupA.clear();
+      state.contrastGroupB.clear();
+      state.contrastResults = null;
+      buildEnvGrid();
+      render();
+    };
+  });
+  document.querySelectorAll('input[name="env-level"]').forEach(input => {
+    input.checked = (input.value === state.envLevel);
+    input.onchange = () => {
+      state.envLevel = input.value;
+      state.envCategories = computeEnvCategories(state.envSide, state.envLevel);
+      state.selectedEnvCategories = new Set(state.envCategories);
+      state.contrastGroupA.clear();
+      state.contrastGroupB.clear();
+      state.contrastResults = null;
+      buildEnvGrid();
+      render();
+    };
+  });
+  buildEnvGrid();
+
+  // Context contrast panel controls (Group A/B pickers themselves are
+  // rebuilt every render by updateContrastPanel(), same as the rest of
+  // this panel's tables -- only the one-time controls are wired here).
+  document.querySelectorAll('input[name="contrast-variable"]').forEach(input => {
+    input.onchange = () => {
+      state.contrastVariable = input.value;
+      state.contrastResults = null;
+      render();
+    };
+  });
+  document.querySelectorAll('input[name="contrast-mode"]').forEach(input => {
+    input.onchange = () => {
+      state.contrastMode = input.value;
+      state.contrastResults = null;
+      render();
+    };
+  });
+  document.getElementById("contrast-compute").onclick = () => {
+    runContrastSignificance();
+    render();
+  };
+
+  // mode checkboxes
+  document.querySelectorAll("[data-mode]").forEach(input => {
+    input.checked = state.modes.has(input.dataset.mode);
+    input.onchange = () => {
+      input.checked ? state.modes.add(input.dataset.mode) : state.modes.delete(input.dataset.mode);
+      if (state.modes.size === 0){ input.checked = true; state.modes.add(input.dataset.mode); }
+      render();
+    };
+  });
+
+  // "center each category on its own mean" -- means mode doesn't have a
+  // sensible reading once every category is forced to its own origin (each
+  // entity's trapezoid would just collapse to a single point), so it's
+  // disabled, not just left to render nonsense, while centering is on.
+  const centerToggle = document.getElementById("center-toggle");
+  const centerHint = document.getElementById("center-hint");
+  const meansCheckbox = document.querySelector('input[data-mode="means"]');
+  centerToggle.checked = state.centerOnMean;
+  centerHint.style.display = state.centerOnMean ? "block" : "none";
+  function applyCenterModeUI(){
+    meansCheckbox.disabled = state.centerOnMean;
+    if (state.centerOnMean && state.modes.has("means")){
+      state.modes.delete("means");
+      meansCheckbox.checked = false;
+      if (state.modes.size === 0) state.modes.add("tokens");
+    }
+  }
+  applyCenterModeUI();
+  centerToggle.onchange = () => {
+    state.centerOnMean = centerToggle.checked;
+    centerHint.style.display = state.centerOnMean ? "block" : "none";
+    applyCenterModeUI();
+    buildControlsUI(); // refresh checkbox states (means gets checked/disabled)
+    render();
+  };
+
+  // color scheme radios
+  document.querySelectorAll('input[name="scheme"]').forEach(input => {
+    input.checked = (input.value === state.colorScheme);
+    input.onchange = () => { state.colorScheme = input.value; render(); };
+  });
+
+  // ellipse controls
+  const ellipseToggle = document.getElementById("ellipse-toggle");
+  ellipseToggle.checked = state.showEllipses;
+  ellipseToggle.onchange = () => { state.showEllipses = ellipseToggle.checked; render(); };
+  const ellipsePct = document.getElementById("ellipse-pct");
+  ellipsePct.value = state.confidencePct;
+  ellipsePct.onchange = () => {
+    const v = parseFloat(ellipsePct.value);
+    state.confidencePct = (isFinite(v) && v > 0 && v < 100) ? v : 95;
+    ellipsePct.value = state.confidencePct;
+    render();
+  };
+
+  // reference overlay controls
+  const paperRefToggle = document.getElementById("paper-reference-toggle");
+  paperRefToggle.checked = state.showPaperReference;
+  paperRefToggle.onchange = () => { state.showPaperReference = paperRefToggle.checked; render(); };
+
+  const customRefToggle = document.getElementById("custom-reference-toggle");
+  const hasCustomRef = Array.isArray(window.USER_REFERENCE_DATA) && window.USER_REFERENCE_DATA.length > 0;
+  customRefToggle.disabled = !hasCustomRef;
+  customRefToggle.checked = hasCustomRef && state.showCustomReference;
+  customRefToggle.onchange = () => { state.showCustomReference = customRefToggle.checked; render(); };
+  updateReferenceHint();
+
+  // axis mode
+  document.querySelectorAll('input[name="axis-mode"]').forEach(input => {
+    input.checked = (input.value === state.axisMode);
+    input.onchange = () => {
+      state.axisMode = input.value;
+      document.getElementById("custom-axis-inputs").style.display = (state.axisMode === "custom") ? "grid" : "none";
+      render();
+    };
+  });
+  ["f2-min","f2-max","f1-min","f1-max"].forEach(id => {
+    document.getElementById(id).onchange = () => {
+      state.customF2Min = parseFloat(document.getElementById("f2-min").value);
+      state.customF2Max = parseFloat(document.getElementById("f2-max").value);
+      state.customF1Min = parseFloat(document.getElementById("f1-min").value);
+      state.customF1Max = parseFloat(document.getElementById("f1-max").value);
+      render();
+    };
+  });
+
+  document.querySelectorAll('[data-action]').forEach(btn => {
+    btn.onclick = () => {
+      const action = btn.dataset.action;
+      if (action === "select-all-speakers"){ state.groups.forEach(g => state.speakersByGroup[g].forEach(s => state.selectedSpeakers.add(g+"|||"+s))); }
+      if (action === "select-none-speakers"){ state.selectedSpeakers.clear(); }
+      if (action === "select-all-vowels"){ state.vowels.forEach(v => state.selectedVowels.add(v)); }
+      if (action === "select-none-vowels"){ state.selectedVowels.clear(); }
+      if (action === "select-all-genders"){ state.genders.forEach(gd => state.selectedGenders.add(gd)); }
+      if (action === "select-none-genders"){ state.selectedGenders.clear(); }
+      if (action === "select-all-env"){ state.envCategories.forEach(c => state.selectedEnvCategories.add(c)); }
+      if (action === "select-none-env"){ state.selectedEnvCategories.clear(); }
+      buildControlsUI();
+      render();
+    };
+  });
+}
+
+// ==============================================================================
+// DATA HELPERS
+// ==============================================================================
+function currentFormantPair(){
+  return state.formantPairs[state.chosenPairIdx] || {f1:"F1", f2:"F2", label:"raw", unit:"Hz"};
+}
+// Which key into PAPER_REFERENCE / a custom reference set's data matches
+// whatever formant pair is currently selected -- null if there's no
+// reference data for that choice (e.g. Bark, or a file-provided pair).
+function currentReferenceKey(){
+  const {f1, f2} = currentFormantPair();
+  if (f1 === "F1" && f2 === "F2") return "raw";
+  if (f1 === "F1_labov" && f2 === "F2_labov") return "labov";
+  if (f1 === "F1_nearey" && f2 === "F2_nearey") return "nearey";
+  return null;
+}
+function updateReferenceHint(){
+  const refHint = document.getElementById("reference-hint");
+  if (!refHint) return;
+  const hasCustomRef = Array.isArray(window.USER_REFERENCE_DATA) && window.USER_REFERENCE_DATA.length > 0;
+  refHint.textContent = hasCustomRef
+    ? `Loaded ${window.USER_REFERENCE_DATA.length} custom reference set(s) from reference_values.js.`
+    : "No reference_values.js found alongside this file (or it defines no data) -- custom reference unavailable, nothing else affected.";
+  if (!currentReferenceKey()){
+    refHint.textContent += " Note: no reference data applies to the currently selected formant pair.";
+  }
+  if (state.centerOnMean){
+    refHint.textContent += " Reference overlays are hidden while centering is on (absolute positions don't apply to a deviation-from-mean view).";
+  }
+}
+// Optional filters that only exist for files that carry the columns: the
+// categorical ones (stress, word position, ...) and the 30 ms aligner floor.
+function isFlagTrue(v){ return v === true || String(v).toUpperCase() === "TRUE"; }
+function passesExtraFilters(r){
+  if (state.excludeFloor && state.pisoCol && isFlagTrue(r[state.pisoCol])) return false;
+  for (const f of state.extraFilters){
+    if (!f.selected.has(String(r[f.col]))) return false;
+  }
+  return true;
+}
+function getFilteredSubset(skipOutlierFilter){
+  const {f1, f2} = currentFormantPair();
+  const envCol = state.envSide === "previous" ? state.prevCol : state.nextCol;
+  return state.rows.filter(r => {
+    const key = String(r[state.groupCol]) + "|||" + String(r[state.speakerCol]);
+    if (!state.selectedSpeakers.has(key)) return false;
+    if (!state.selectedVowels.has(String(r[state.vowelCol]))) return false;
+    if (state.genderCol && !state.selectedGenders.has(String(r[state.genderCol]))) return false;
+    if (!passesExtraFilters(r)) return false;
+    if (envCol){
+      const cat = classifyPhone(String(r[envCol]), state.envLevel);
+      if (!state.selectedEnvCategories.has(cat)) return false;
+    }
+    if (!skipOutlierFilter && state.hasOutlierData && state.removeOutliers){
+      const d = r.__outlierDist;
+      if (!isNaN(d) && d > state.outlierThreshold) return false;
+    }
+    const v1 = r[f1], v2 = r[f2];
+    return typeof v1 === "number" && typeof v2 === "number" && isFinite(v1) && isFinite(v2);
+  });
+}
+
+// ==============================================================================
+// CONTEXT CONTRAST (Group A vs. rest / Group B)
+// Unlike getFilteredSubset() above, this does NOT collapse rows down to
+// "in the active environment universe or not" -- it keeps every row that
+// passes the OTHER filters (speaker/vowel/gender/outlier), classifies each
+// one's own environment category, and leaves the A/B split to
+// splitRowsForVowel() below. "Universe" for both Group A's available picks
+// and the default "rest" is state.selectedEnvCategories -- i.e. whatever's
+// currently ticked in the Environment context filter -- so this panel stays
+// consistent with what the rest of the tool is showing rather than
+// silently pulling in categories the user has already excluded elsewhere.
+// ==============================================================================
+function getSubsetForContrast(){
+  const useDuration = state.contrastVariable === "duration";
+  const {f1, f2} = currentFormantPair();
+  return state.rows.filter(r => {
+    const key = String(r[state.groupCol]) + "|||" + String(r[state.speakerCol]);
+    if (!state.selectedSpeakers.has(key)) return false;
+    if (!state.selectedVowels.has(String(r[state.vowelCol]))) return false;
+    if (state.genderCol && !state.selectedGenders.has(String(r[state.genderCol]))) return false;
+    if (!passesExtraFilters(r)) return false;
+    if (state.hasOutlierData && state.removeOutliers){
+      const d = r.__outlierDist;
+      if (!isNaN(d) && d > state.outlierThreshold) return false;
+    }
+    if (useDuration) return isNum(r.__duration);
+    return isNum(r[f1]) && isNum(r[f2]);
+  });
+}
+function contrastCategoryFor(r){
+  const envCol = state.envSide === "previous" ? state.prevCol : state.nextCol;
+  if (!envCol) return null;
+  return classifyPhone(String(r[envCol]), state.envLevel);
+}
+// Splits rows for ONE vowel into Group A and Group B.
+//   "rest" mode:   B = everything in the active universe that isn't A.
+//   "custom" mode: B = only the categories explicitly picked for B; a
+//                  category in neither pick list is excluded entirely
+//                  rather than silently folded into either side.
+function splitRowsForVowel(rows, vowel){
+  const groupA = [], groupB = [];
+  rows.forEach(r => {
+    if (String(r[state.vowelCol]) !== vowel) return;
+    const cat = contrastCategoryFor(r);
+    if (cat === null || !state.selectedEnvCategories.has(cat)) return;
+    if (state.contrastGroupA.has(cat)){ groupA.push(r); return; }
+    if (state.contrastMode === "custom"){
+      if (state.contrastGroupB.has(cat)) groupB.push(r);
+    } else {
+      groupB.push(r);
+    }
+  });
+  return {groupA, groupB};
+}
+function speakerCountOf(rows){
+  return new Set(rows.map(r => String(r[state.groupCol])+"|||"+String(r[state.speakerCol]))).size;
+}
+// Cheap, runs every render(): n / mean / speaker-count for whichever
+// variable (current formant pair, or duration) is selected. No
+// significance test here -- see runContrastSignificance() below for why
+// that part is deliberately NOT run on every render.
+function contrastDescriptiveFor(groupA, groupB){
+  const useDuration = state.contrastVariable === "duration";
+  const {f1, f2} = currentFormantPair();
+  function statsOf(rows, col){
+    const vals = rows.map(r=>r[col]).filter(isNum);
+    return {n: vals.length, mean: vals.length ? mean(vals) : NaN};
+  }
+  const out = {nSpeakersA: speakerCountOf(groupA), nSpeakersB: speakerCountOf(groupB)};
+  if (useDuration){
+    out.vars = [{label:"Duration", A: statsOf(groupA,"__duration"), B: statsOf(groupB,"__duration")}];
+  } else {
+    out.vars = [
+      {label:"F1", A: statsOf(groupA, f1), B: statsOf(groupB, f1)},
+      {label:"F2", A: statsOf(groupA, f2), B: statsOf(groupB, f2)},
+    ];
+  }
+  return out;
+}
+// Partial Fisher-Yates permutation test on the difference of means.
+// Reuses one working array across iterations (each iteration's partial
+// shuffle of the first nA slots is still a uniformly random A/B split,
+// regardless of the array's leftover order from the previous iteration --
+// standard trick for repeated resampling without paying for a fresh copy
+// each time). Two-sided: p = share of permuted |diff| >= observed |diff|.
+function permutationTestMeanDiff(valsA, valsB, nPerm){
+  const nA = valsA.length, nB = valsB.length;
+  if (nA < 2 || nB < 2) return {diff: NaN, p: NaN, n1:nA, n2:nB};
+  const obsDiff = mean(valsA) - mean(valsB);
+  const work = valsA.concat(valsB);
+  const n = work.length;
+  const totalSum = work.reduce((a,b)=>a+b, 0);
+  let count = 0;
+  for (let b=0; b<nPerm; b++){
+    let sumA = 0;
+    for (let i=0;i<nA;i++){
+      const j = i + Math.floor(Math.random()*(n-i));
+      const tmp = work[i]; work[i]=work[j]; work[j]=tmp;
+      sumA += work[i];
+    }
+    const permDiff = (sumA/nA) - ((totalSum-sumA)/nB);
+    if (Math.abs(permDiff) >= Math.abs(obsDiff)) count++;
+  }
+  return {diff: obsDiff, p: (count+1)/(nPerm+1), n1:nA, n2:nB};
+}
+const CONTRAST_N_PERM = 1000;
+
+// Identifies exactly which comparison the current inputs describe, so a
+// previously-computed significance result can be told apart from a stale
+// one after the user changes something -- see runContrastSignificance()
+// and updateContrastPanel() below.
+function contrastSignature(){
+  const {f1, f2} = currentFormantPair();
+  return JSON.stringify({
+    vowels: Array.from(state.selectedVowels).sort(),
+    a: Array.from(state.contrastGroupA).sort(),
+    b: state.contrastMode === "custom" ? Array.from(state.contrastGroupB).sort() : null,
+    mode: state.contrastMode, variable: state.contrastVariable, f1, f2,
+    side: state.envSide, level: state.envLevel,
+    universe: Array.from(state.selectedEnvCategories).sort(),
+    outliers: state.removeOutliers, thr: state.outlierThreshold,
+    speakers: Array.from(state.selectedSpeakers).sort(),
+    genders: Array.from(state.selectedGenders).sort(),
+  });
+}
+// Descriptive rows (no p-values) -- cheap, safe to call on every render.
+function buildContrastDescriptiveRows(){
+  if (!state.contrastGroupA.size) return [];
+  const subset = getSubsetForContrast();
+  const rows = [];
+  state.vowels.forEach(v => {
+    if (!state.selectedVowels.has(v)) return;
+    const {groupA, groupB} = splitRowsForVowel(subset, v);
+    if (!groupA.length && !groupB.length) return;
+    const desc = contrastDescriptiveFor(groupA, groupB);
+    desc.vars.forEach(block => {
+      rows.push({vowel:v, label:block.label, nA:block.A.n, nB:block.B.n,
+                 nSpeakersA:desc.nSpeakersA, nSpeakersB:desc.nSpeakersB,
+                 meanA:block.A.mean, meanB:block.B.mean, diff:block.A.mean-block.B.mean});
+    });
+  });
+  return rows;
+}
+// Significance -- deliberately NOT called from updateStatsPanel()/every
+// render(). Permutation is O(nPerm * n) per vowel per variable; with a
+// heavy corpus and several vowels selected at once, running that
+// unconditionally on every checkbox tick anywhere else in the sidebar
+// (axis drag, color scheme, ellipse toggle...) would add real, pointless
+// lag to interactions that have nothing to do with this panel. Triggered
+// only by the "Compute significance" button; results are tagged with
+// contrastSignature() so a stale result from a since-changed comparison
+// is never displayed as if it still applied.
+function runContrastSignificance(){
+  if (!state.contrastGroupA.size) { state.contrastResults = null; return; }
+  const subset = getSubsetForContrast();
+  const {f1, f2} = currentFormantPair();
+  const useDuration = state.contrastVariable === "duration";
+  const rows = [];
+  state.vowels.forEach(v => {
+    if (!state.selectedVowels.has(v)) return;
+    const {groupA, groupB} = splitRowsForVowel(subset, v);
+    if (groupA.length < 2 || groupB.length < 2) return;
+    const cols = useDuration ? [{label:"Duration", col:"__duration"}]
+                             : [{label:"F1", col:f1}, {label:"F2", col:f2}];
+    cols.forEach(({label,col}) => {
+      const valsA = groupA.map(r=>r[col]).filter(isNum);
+      const valsB = groupB.map(r=>r[col]).filter(isNum);
+      const res = permutationTestMeanDiff(valsA, valsB, CONTRAST_N_PERM);
+      rows.push({vowel:v, label, ...res});
+    });
+  });
+  state.contrastResults = {sig: contrastSignature(), rows};
+}
+
+// Ordered list of selected speaker keys (group|||speaker), used to assign
+// stable shade indices so the same speaker always gets the same shade
+// across re-renders.
+function orderedSelectedSpeakers(){
+  const out = [];
+  state.groups.forEach(g => state.speakersByGroup[g].forEach(s => {
+    const key = g + "|||" + s;
+    if (state.selectedSpeakers.has(key)) out.push(key);
+  }));
+  return out;
+}
+function orderedSelectedGroups(){
+  return state.groups.filter(g => state.speakersByGroup[g].some(s => state.selectedSpeakers.has(g+"|||"+s)));
+}
+// Genders in a fixed order (state.genders is sorted once at load time) rather
+// than Set insertion order -- Set insertion order shifts when a checkbox is
+// unchecked then rechecked, which would otherwise make a speaker's shade
+// jump around between renders for no data-driven reason.
+function orderedSelectedGenders(){
+  return state.genders.filter(gd => state.selectedGenders.has(gd));
+}
+
+// ==============================================================================
+// CATEGORY BUILDING
+// One category = one pool of tokens that gets one color and, in heatmap mode,
+// one density surface. What defines a category depends on colorScheme:
+//   vowel          -> one per vowel, pooling every selected speaker
+//   vowel-speaker  -> one per (vowel, speaker); hue=vowel, shade=speaker
+//   vowel-group    -> one per (vowel, group);   hue=vowel, shade=group
+//   speaker        -> one per speaker, pooled across vowels
+//   group          -> one per group, pooled across vowels
+// ==============================================================================
+function buildCategories(subset){
+  const {f1, f2} = currentFormantPair();
+  const scheme = state.colorScheme;
+  const speakerKeys = orderedSelectedSpeakers();
+  const groupKeys = orderedSelectedGroups();
+  const cats = [];
+
+  function rowsFor(pred){ return subset.filter(pred); }
+
+  if (scheme === "vowel"){
+    state.vowels.forEach(v => {
+      if (!state.selectedVowels.has(v)) return;
+      const rows = rowsFor(r => String(r[state.vowelCol]) === v);
+      if (rows.length) cats.push({key:v, label:v, color:`hsl(${vowelHue(v)},70%,55%)`, rows, vowel:v});
+    });
+  } else if (scheme === "speaker"){
+    speakerKeys.forEach((key, i) => {
+      const [g,s] = key.split("|||");
+      const rows = rowsFor(r => String(r[state.groupCol])===g && String(r[state.speakerCol])===s);
+      if (rows.length) cats.push({key, label:(state.groupCol==="__group"?s:`${g}-${s}`), color:`hsl(${neutralHue(i,speakerKeys.length)},65%,58%)`, rows});
+    });
+  } else if (scheme === "group"){
+    groupKeys.forEach((g, i) => {
+      const rows = rowsFor(r => String(r[state.groupCol])===g);
+      if (rows.length) cats.push({key:g, label:g, color:`hsl(${neutralHue(i,groupKeys.length)},65%,58%)`, rows});
+    });
+  } else if (scheme === "vowel-speaker"){
+    state.vowels.forEach(v => {
+      if (!state.selectedVowels.has(v)) return;
+      speakerKeys.forEach((key,i) => {
+        const [g,s] = key.split("|||");
+        const rows = rowsFor(r => String(r[state.vowelCol])===v && String(r[state.groupCol])===g && String(r[state.speakerCol])===s);
+        if (rows.length) cats.push({
+          key:v+"::"+key, label:`${v} \u2013 ${state.groupCol==="__group"?s:g+"-"+s}`,
+          color:`hsl(${vowelHue(v)},72%,${entityShade(i,speakerKeys.length)}%)`, rows, vowel:v,
+        });
+      });
+    });
+  } else if (scheme === "vowel-group"){
+    state.vowels.forEach(v => {
+      if (!state.selectedVowels.has(v)) return;
+      groupKeys.forEach((g,i) => {
+        const rows = rowsFor(r => String(r[state.vowelCol])===v && String(r[state.groupCol])===g);
+        if (rows.length) cats.push({
+          key:v+"::"+g, label:`${v} \u2013 ${g}`,
+          color:`hsl(${vowelHue(v)},72%,${entityShade(i,groupKeys.length)}%)`, rows, vowel:v,
+        });
+      });
+    });
+  } else if (scheme === "gender"){
+    const genderKeys = orderedSelectedGenders();
+    genderKeys.forEach((gd, i) => {
+      const rows = rowsFor(r => String(r[state.genderCol])===gd);
+      if (rows.length) cats.push({key:gd, label:gd, color:`hsl(${neutralHue(i,genderKeys.length)},65%,58%)`, rows});
+    });
+  } else if (scheme === "vowel-gender"){
+    const genderKeys = orderedSelectedGenders();
+    state.vowels.forEach(v => {
+      if (!state.selectedVowels.has(v)) return;
+      genderKeys.forEach((gd,i) => {
+        const rows = rowsFor(r => String(r[state.vowelCol])===v && String(r[state.genderCol])===gd);
+        if (rows.length) cats.push({
+          key:v+"::"+gd, label:`${v} \u2013 ${gd}`,
+          color:`hsl(${vowelHue(v)},72%,${entityShade(i,genderKeys.length)}%)`, rows, vowel:v,
+        });
+      });
+    });
+  } else if (scheme === "env"){
+    const envCol = state.envSide === "previous" ? state.prevCol : state.nextCol;
+    if (envCol){
+      const envKeys = orderedSelectedEnvCategories();
+      envKeys.forEach((ec,i) => {
+        const rows = rowsFor(r => classifyPhone(String(r[envCol]), state.envLevel) === ec);
+        if (rows.length) cats.push({key:ec, label:ec, color:envCategoryColor(ec,i,envKeys.length), rows});
+      });
+    }
+  } else if (scheme === "vowel-env"){
+    const envCol = state.envSide === "previous" ? state.prevCol : state.nextCol;
+    if (envCol){
+      const envKeys = orderedSelectedEnvCategories();
+      state.vowels.forEach(v => {
+        if (!state.selectedVowels.has(v)) return;
+        envKeys.forEach((ec,i) => {
+          const rows = rowsFor(r => String(r[state.vowelCol])===v && classifyPhone(String(r[envCol]), state.envLevel)===ec);
+          if (rows.length) cats.push({
+            key:v+"::"+ec, label:`${v} \u2013 ${ec}`,
+            color:envCategoryColor(ec,i,envKeys.length), rows, vowel:v,
+          });
+        });
+      });
+    }
+  }
+  return cats;
+}
+
+// One flat, muted category per selected vowel, pooling ALL of that vowel's
+// currently-filtered tokens regardless of environment split -- drawn as a
+// heatmap layer underneath the environment-colored contours in "vowel-env"
+// mode, purely as a visual reference frame ("this env split is a slice of
+// THIS vowel's overall shape"). Not added to buildCategories() proper since
+// it isn't a real category for tokens/means/ellipses/legend/stats -- those
+// stay exactly as they were, this is heatmap-only backdrop.
+const VOWEL_BACKGROUND_COLOR = "hsl(38,55%,68%)";
+function buildVowelBackgroundCategories(subset){
+  const cats = [];
+  state.vowels.forEach(v => {
+    if (!state.selectedVowels.has(v)) return;
+    const rows = subset.filter(r => String(r[state.vowelCol]) === v);
+    if (rows.length) cats.push({key:"__bg::"+v, label:`${v} (all contexts)`, color:VOWEL_BACKGROUND_COLOR, rows, vowel:v});
+  });
+  return cats;
+}
+// Entities for MEANS mode: granularity follows the colorScheme's own entity
+// dimension (see note above buildCategories) -- "vowel" alone pools
+// everything into one combined trapezoid, since it doesn't distinguish
+// individual speakers/groups at all.
+function buildMeansEntities(subset){
+  const scheme = state.colorScheme;
+  const entities = [];
+  if (scheme === "speaker" || scheme === "vowel-speaker"){
+    orderedSelectedSpeakers().forEach((key,i,arr) => {
+      const [g,s] = key.split("|||");
+      const rows = subset.filter(r => String(r[state.groupCol])===g && String(r[state.speakerCol])===s);
+      if (rows.length) entities.push({key, label:(state.groupCol==="__group"?s:`${g}-${s}`), rows, idx:i, total:arr.length});
+    });
+  } else if (scheme === "group" || scheme === "vowel-group"){
+    orderedSelectedGroups().forEach((g,i,arr) => {
+      const rows = subset.filter(r => String(r[state.groupCol])===g);
+      if (rows.length) entities.push({key:g, label:g, rows, idx:i, total:arr.length});
+    });
+  } else if (scheme === "gender" || scheme === "vowel-gender"){
+    orderedSelectedGenders().forEach((gd,i,arr) => {
+      const rows = subset.filter(r => String(r[state.genderCol])===gd);
+      if (rows.length) entities.push({key:gd, label:gd, rows, idx:i, total:arr.length});
+    });
+  } else if (scheme === "env" || scheme === "vowel-env"){
+    const envCol = state.envSide === "previous" ? state.prevCol : state.nextCol;
+    if (envCol){
+      orderedSelectedEnvCategories().forEach((ec,i,arr) => {
+        const rows = subset.filter(r => classifyPhone(String(r[envCol]), state.envLevel) === ec);
+        if (rows.length) entities.push({key:ec, label:ec, rows, idx:i, total:arr.length});
+      });
+    }
+  } else {
+    if (subset.length) entities.push({key:"__all", label:"selection", rows:subset, idx:0, total:1});
+  }
+  return entities;
+}
+function entityColorFor(idx, total){
+  return `hsl(${neutralHue(idx,total)},20%,${entityShade(idx,total)}%)`;
+}
+
+// ==============================================================================
+// STATS: mean / covariance / confidence ellipse
+// ==============================================================================
+function mean(arr){ return arr.reduce((a,b)=>a+b,0) / arr.length; }
+function covMatrix(xs, ys){
+  const mx = mean(xs), my = mean(ys);
+  let sxx=0, syy=0, sxy=0;
+  for (let i=0;i<xs.length;i++){
+    const dx = xs[i]-mx, dy = ys[i]-my;
+    sxx += dx*dx; syy += dy*dy; sxy += dx*dy;
+  }
+  const n = xs.length - 1 || 1;
+  return {varX: sxx/n, varY: syy/n, covXY: sxy/n, meanX:mx, meanY:my};
+}
+// chi-square inverse CDF at 2 degrees of freedom has a closed form:
+// ppf(p, df=2) = -2*ln(1-p). Verified against scipy.stats.chi2.ppf.
+function chi2ppf_df2(p){ return -2 * Math.log(1 - p); }
+
+// Mahalanobis distance (squared) from a single token to a category's own
+// mean, scaled by that category's own covariance -- the same covariance
+// the confidence ellipses are built from, just applied to one point
+// instead of drawn as a boundary.
+function mahalanobisSq(x, y, cat, f2, f1){
+  if (cat.rows.length < 3) return NaN;
+  const xs = cat.rows.map(r=>r[f2]), ys = cat.rows.map(r=>r[f1]);
+  const {varX, varY, covXY, meanX, meanY} = covMatrix(xs, ys);
+  const det = varX*varY - covXY*covXY;
+  if (det <= 0) return NaN;
+  const dx = x-meanX, dy = y-meanY;
+  const invA = varY/det, invB = -covXY/det, invD = varX/det;
+  return dx*(invA*dx+invB*dy) + dy*(invB*dx+invD*dy);
+}
+// Chi-square CDF at 2 df has the same closed form as its inverse used for
+// the ellipses (chi2 with 2 df is just an exponential distribution):
+// P(Mahalanobis^2 <= d) = 1 - exp(-d/2). Plugging in this SPECIFIC token's
+// own squared distance gives the fraction of the category's tokens that
+// sit closer to the mean than this one does -- 0 = dead center (maximally
+// typical), 100 = further out than virtually the whole category (a real
+// outlier for that category specifically, not for the dataset overall).
+function typicalityPercentile(x, y, cat, f2, f1){
+  const dSq = mahalanobisSq(x, y, cat, f2, f1);
+  if (isNaN(dSq)) return null;
+  return (1 - Math.exp(-dSq/2)) * 100;
+}
+
+function ellipsePoints(xs, ys, confidence, nPoints){
+  nPoints = nPoints || 72;
+  if (xs.length < 3) return null;
+  const {varX, varY, covXY, meanX, meanY} = covMatrix(xs, ys);
+  const trace = varX + varY;
+  const det = varX*varY - covXY*covXY;
+  if (det <= 0) return null;
+  const term = Math.sqrt(Math.max(trace*trace/4 - det, 0));
+  const eig1 = trace/2 + term, eig2 = trace/2 - term;
+  const angle = 0.5 * Math.atan2(2*covXY, varX - varY);
+  const scale = Math.sqrt(chi2ppf_df2(confidence));
+  const rx = scale * Math.sqrt(Math.max(eig1,0));
+  const ry = scale * Math.sqrt(Math.max(eig2,0));
+  const pts = [];
+  for (let i=0;i<=nPoints;i++){
+    const t = (i/nPoints) * 2*Math.PI;
+    const ex = rx*Math.cos(t), ey = ry*Math.sin(t);
+    const rxr = ex*Math.cos(angle) - ey*Math.sin(angle);
+    const ryr = ex*Math.sin(angle) + ey*Math.cos(angle);
+    pts.push([meanX+rxr, meanY+ryr]);
+  }
+  return pts;
+}
+
+// ==============================================================================
+// STATS: pairwise separation/overlap measures (Pillai's trace, Bhattacharyya
+// / Hellinger distance) -- used by the Statistics panel below.
+// ==============================================================================
+
+// 2x2 matrix helpers (plain [[a,b],[c,d]] arrays -- these are small and few,
+// no need for a matrix library).
+function mat2Add(A,B){ return [[A[0][0]+B[0][0], A[0][1]+B[0][1]],[A[1][0]+B[1][0], A[1][1]+B[1][1]]]; }
+function mat2Sub(A,B){ return [[A[0][0]-B[0][0], A[0][1]-B[0][1]],[A[1][0]-B[1][0], A[1][1]-B[1][1]]]; }
+function mat2Inv(A){
+  const det = A[0][0]*A[1][1] - A[0][1]*A[1][0];
+  if (Math.abs(det) < 1e-12) return null;
+  return [[A[1][1]/det, -A[0][1]/det], [-A[1][0]/det, A[0][0]/det]];
+}
+function mat2Mul(A,B){
+  return [
+    [A[0][0]*B[0][0]+A[0][1]*B[1][0], A[0][0]*B[0][1]+A[0][1]*B[1][1]],
+    [A[1][0]*B[0][0]+A[1][1]*B[1][0], A[1][0]*B[0][1]+A[1][1]*B[1][1]],
+  ];
+}
+function mat2Trace(A){ return A[0][0]+A[1][1]; }
+function scatter2x2(points, center){
+  let sxx=0, syy=0, sxy=0;
+  points.forEach(([x,y]) => { const dx=x-center[0], dy=y-center[1]; sxx+=dx*dx; syy+=dy*dy; sxy+=dx*dy; });
+  return [[sxx,sxy],[sxy,syy]];
+}
+
+// Pillai's trace for a 2-group MANOVA on (F2,F1): trace(B @ inv(T)), where T
+// is the total scatter around the grand mean and B is the between-group
+// scatter (T minus the within-group scatter W). Bounded in [0,1): 0 = total
+// overlap, close to 1 = the groups occupy almost entirely separate regions.
+// `points1`/`points2` are arrays of [x,y] pairs.
+function pillaiTrace(points1, points2){
+  if (points1.length < 3 || points2.length < 3) return NaN;
+  const combined = points1.concat(points2);
+  const gm = [mean(combined.map(p=>p[0])), mean(combined.map(p=>p[1]))];
+  const T = scatter2x2(combined, gm);
+  const c1 = [mean(points1.map(p=>p[0])), mean(points1.map(p=>p[1]))];
+  const c2 = [mean(points2.map(p=>p[0])), mean(points2.map(p=>p[1]))];
+  const W = mat2Add(scatter2x2(points1, c1), scatter2x2(points2, c2));
+  const B = mat2Sub(T, W);
+  const invT = mat2Inv(T);
+  if (!invT) return NaN;
+  return mat2Trace(mat2Mul(B, invT));
+}
+
+// Bhattacharyya distance between two fitted bivariate Gaussians. Unbounded
+// above (0 = identical), and -- unlike Pillai's trace -- doesn't saturate
+// near a ceiling, so it keeps distinguishing "very separated" from
+// "extremely separated" past the point where Pillai has flattened out near
+// 1. NOT a proper metric (fails the triangle inequality) -- see
+// hellingerDistance() for the version that is.
+function bhattacharyyaDistance(xs1, ys1, xs2, ys2){
+  if (xs1.length < 3 || xs2.length < 3) return NaN;
+  const c1 = covMatrix(xs1, ys1), c2 = covMatrix(xs2, ys2);
+  const covAvg = { xx:(c1.varX+c2.varX)/2, yy:(c1.varY+c2.varY)/2, xy:(c1.covXY+c2.covXY)/2 };
+  const det1 = c1.varX*c1.varY - c1.covXY*c1.covXY;
+  const det2 = c2.varX*c2.varY - c2.covXY*c2.covXY;
+  const detAvg = covAvg.xx*covAvg.yy - covAvg.xy*covAvg.xy;
+  if (det1<=0 || det2<=0 || detAvg<=0) return NaN;
+  const dx = c1.meanX-c2.meanX, dy = c1.meanY-c2.meanY;
+  const invA = covAvg.yy/detAvg, invB = -covAvg.xy/detAvg, invD = covAvg.xx/detAvg;
+  const meanTerm = 0.125 * (dx*(invA*dx+invB*dy) + dy*(invB*dx+invD*dy));
+  const shapeTerm = 0.5 * Math.log(detAvg / Math.sqrt(det1*det2));
+  return meanTerm + shapeTerm;
+}
+
+// Hellinger distance, derived from the Bhattacharyya coefficient
+// BC = exp(-bhattacharyyaDistance): sqrt(1-BC). Bounded [0,1] AND a proper
+// metric (satisfies the triangle inequality) -- the one safe to average
+// across several vowels into a single whole-system distance number, which
+// Pillai's trace and raw Bhattacharyya distance aren't built for.
+function hellingerDistance(xs1, ys1, xs2, ys2){
+  const db = bhattacharyyaDistance(xs1, ys1, xs2, ys2);
+  if (isNaN(db)) return NaN;
+  const bc = Math.exp(-db);
+  return Math.sqrt(Math.max(0, 1-bc));
+}
+
+// ==============================================================================
+// 1D KERNEL DENSITY (for the "1D formant distribution" panel)
+// A single-formant counterpart to the 2D heatmap: one smooth density curve
+// per category, all sharing a common baseline, making spread/overlap along
+// ONE formant easy to read directly off curve width and peak height.
+// ==============================================================================
+// Silverman's rule of thumb for Gaussian KDE bandwidth (Silverman 1986).
+function silvermanBandwidth(values){
+  const n = values.length;
+  const sd = Math.sqrt(covMatrix(values, values).varX); // varX==varY==var(values) when xs===ys
+  return Math.max(1.06 * sd * Math.pow(n, -1/5), 1e-6);
+}
+// Gaussian KDE evaluated at every point in `grid`, normalized so the curve
+// integrates to ~1 over the grid (verified against a known-mean/SD test
+// case before shipping: peak lands at the true mean, tails go to ~0).
+function kde1d(values, grid, bandwidth){
+  const n = values.length;
+  const norm = 1 / (n * bandwidth * Math.sqrt(2*Math.PI));
+  return grid.map(g => {
+    let sum = 0;
+    for (let i=0;i<n;i++){
+      const z = (g - values[i]) / bandwidth;
+      sum += Math.exp(-0.5*z*z);
+    }
+    return sum * norm;
+  });
+}
+
+// Pairwise Pillai's trace + Hellinger distance between every pair of the
+// categories currently shown (see the "Pairwise category overlap" panel
+// copy for the full explanation of the same-vowel-only restriction).
+function buildPairwiseOverlapRows(){
+  const {f1, f2} = currentFormantPair();
+  const cats = currentCategories;
+  // The same-vowel-only restriction only makes sense when vowel is CROSSED
+  // with another dimension (comparing speaker-to-speaker, or group-to-group,
+  // within a fixed vowel). Under the plain "vowel" scheme, comparing
+  // DIFFERENT vowels against each other is the entire point (that's the
+  // vowel-overlap/merger question), so it must NOT be restricted here.
+  const crossedScheme = (state.colorScheme === "vowel-speaker" || state.colorScheme === "vowel-group" || state.colorScheme === "vowel-gender" || state.colorScheme === "vowel-env");
+  const rows = [];
+  for (let i=0; i<cats.length; i++){
+    for (let j=i+1; j<cats.length; j++){
+      const a = cats[i], b = cats[j];
+      if (crossedScheme && a.vowel !== b.vowel) continue;
+      if (a.rows.length < 10 || b.rows.length < 10) continue;
+      const pts1 = a.rows.map(r => [r[f2], r[f1]]);
+      const pts2 = b.rows.map(r => [r[f2], r[f1]]);
+      const m1 = [mean(pts1.map(p=>p[0])), mean(pts1.map(p=>p[1]))];
+      const m2 = [mean(pts2.map(p=>p[0])), mean(pts2.map(p=>p[1]))];
+      const euclid = Math.hypot(m1[0]-m2[0], m1[1]-m2[1]);
+      const pillai = pillaiTrace(pts1, pts2);
+      const hell = hellingerDistance(
+        a.rows.map(r=>r[f2]), a.rows.map(r=>r[f1]),
+        b.rows.map(r=>r[f2]), b.rows.map(r=>r[f1]),
+      );
+      rows.push({label1:a.label, label2:b.label, n1:a.rows.length, n2:b.rows.length, euclid, pillai, hellinger:hell});
+    }
+  }
+  // Default/selectable sort -- see overlapSortState + sortOverlapBy() near
+  // updateStatsPanel(). Falls back to ascending Pillai (the original fixed
+  // behavior) until the user clicks a column header.
+  const {key, dir} = overlapSortState;
+  const sign = dir === "desc" ? -1 : 1;
+  rows.sort((x,y) => {
+    const xv = isNaN(x[key]) ? Infinity : x[key];
+    const yv = isNaN(y[key]) ? Infinity : y[key];
+    return sign * (xv - yv);
+  });
+  return rows;
+}
+
+// Whole-system Hellinger distance between every pair of currently selected
+// speakers (averaged across whichever vowels both have enough tokens of),
+// plus the within-group vs between-group split. Mirrors
+// speaker_distance_matrix()/within_vs_between_group_distance() from
+// pillai_overlap.py, but computed on the CURRENT selection rather than the
+// full uploaded file -- see the panel copy for why that's the right choice
+// here.
+function buildSpeakerDistanceData(){
+  const {f1, f2} = currentFormantPair();
+  const speakerKeys = orderedSelectedSpeakers();
+  const n = speakerKeys.length;
+
+  const lookup = new Map(); // "group|||speaker::vowel" -> {f2:[...], f1:[...]}
+  currentSubset.forEach(r => {
+    const key = String(r[state.groupCol])+"|||"+String(r[state.speakerCol])+"::"+String(r[state.vowelCol]);
+    if (!lookup.has(key)) lookup.set(key, {f2:[], f1:[]});
+    const entry = lookup.get(key);
+    entry.f2.push(r[f2]); entry.f1.push(r[f1]);
+  });
+
+  const pairs = [];
+  for (let i=0;i<n;i++){
+    for (let j=i+1;j<n;j++){
+      const k1 = speakerKeys[i], k2 = speakerKeys[j];
+      const dists = [];
+      state.vowels.forEach(v => {
+        const e1 = lookup.get(k1+"::"+v), e2 = lookup.get(k2+"::"+v);
+        if (!e1 || !e2 || e1.f2.length<10 || e2.f2.length<10) return;
+        const hd = hellingerDistance(e1.f2, e1.f1, e2.f2, e2.f1);
+        if (!isNaN(hd)) dists.push(hd);
+      });
+      if (dists.length){
+        pairs.push({
+          speaker1:k1.replace("|||","-"), speaker2:k2.replace("|||","-"),
+          group1:k1.split("|||")[0], group2:k2.split("|||")[0],
+          meanHellinger: mean(dists), nVowels: dists.length,
+        });
+      }
+    }
+  }
+  pairs.sort((a,b) => a.meanHellinger - b.meanHellinger);
+
+  const within = pairs.filter(p=>p.group1===p.group2).map(p=>p.meanHellinger);
+  const between = pairs.filter(p=>p.group1!==p.group2).map(p=>p.meanHellinger);
+  return {
+    pairs,
+    withinMean: within.length ? mean(within) : NaN,
+    betweenMean: between.length ? mean(between) : NaN,
+    nWithin: within.length, nBetween: between.length,
+  };
+}
+
+function updateStatsPanel(){
+  document.querySelectorAll('#stats-panel .stats-table th.sortable').forEach(th => {
+    const arrow = th.querySelector(".sort-arrow");
+    if (!arrow) return;
+    arrow.textContent = (th.dataset.key === overlapSortState.key)
+      ? (overlapSortState.dir === "asc" ? "\u2191" : "\u2193") : "";
+  });
+  const overlapRows = buildPairwiseOverlapRows();
+  const overlapBody = document.getElementById("stats-overlap-body");
+  overlapBody.innerHTML = overlapRows.length
+    ? overlapRows.map(r => `
+        <tr>
+          <td>${r.label1}</td><td>${r.label2}</td>
+          <td>${isNaN(r.euclid) ? "\u2013" : r.euclid.toFixed(3)}</td>
+          <td>${isNaN(r.pillai) ? "\u2013" : r.pillai.toFixed(3)}</td>
+          <td>${isNaN(r.hellinger) ? "\u2013" : r.hellinger.toFixed(3)}</td>
+          <td>${r.n1}</td><td>${r.n2}</td>
+        </tr>`).join("")
+    : `<tr><td colspan="7" class="stats-empty">Not enough categories/tokens selected for a pairwise comparison (need at least 2 comparable categories with 10+ tokens each).</td></tr>`;
+
+  const {pairs, withinMean, betweenMean, nWithin, nBetween} = buildSpeakerDistanceData();
+  const speakerBody = document.getElementById("stats-speaker-body");
+  speakerBody.innerHTML = pairs.length
+    ? pairs.map(p => `
+        <tr>
+          <td>${p.speaker1}</td><td>${p.speaker2}</td>
+          <td>${p.meanHellinger.toFixed(3)}</td>
+          <td>${p.nVowels}</td>
+        </tr>`).join("")
+    : `<tr><td colspan="4" class="stats-empty">Select at least 2 speakers with enough shared vowel data to compare.</td></tr>`;
+
+  const summaryEl = document.getElementById("stats-within-between");
+  summaryEl.innerHTML = (nWithin || nBetween)
+    ? `Mean distance <b>within</b> the same group: <b>${isNaN(withinMean)?"\u2013":withinMean.toFixed(3)}</b> (${nWithin} pair${nWithin===1?"":"s"}) &nbsp;|&nbsp; Mean distance <b>between</b> different groups: <b>${isNaN(betweenMean)?"\u2013":betweenMean.toFixed(3)}</b> (${nBetween} pair${nBetween===1?"":"s"})`
+    : "";
+
+  const dispersionRows = buildDispersionRows();
+  const dispersionBody = document.getElementById("stats-dispersion-body");
+  dispersionBody.innerHTML = dispersionRows.length
+    ? dispersionRows.map(r => `
+        <tr>
+          <td>${r.label}</td><td>${r.n}</td>
+          <td>${r.meanF2.toFixed(1)}</td><td>${r.meanF1.toFixed(1)}</td>
+          <td>${r.varF2.toFixed(2)}</td><td>${r.varF1.toFixed(2)}</td>
+          <td>${r.sdF2.toFixed(2)}</td><td>${r.sdF1.toFixed(2)}</td>
+        </tr>`).join("")
+    : `<tr><td colspan="8" class="stats-empty">No categories with at least 3 tokens selected.</td></tr>`;
+
+  updateContrastPanel();
+}
+
+// Rebuilds the Group A/B category pickers (pool = whatever's currently
+// active in Environment context) and the descriptive rows every render;
+// significance columns only show when a cached result's signature still
+// matches the current comparison (see runContrastSignificance()).
+function updateContrastPanel(){
+  const pool = Array.from(state.selectedEnvCategories).sort();
+  // Drop any previously-picked A/B categories that are no longer in the
+  // active universe (e.g. envLevel changed, or they got unticked in
+  // Environment context) rather than leaving them silently stuck.
+  Array.from(state.contrastGroupA).forEach(c => { if (!pool.includes(c)) state.contrastGroupA.delete(c); });
+  Array.from(state.contrastGroupB).forEach(c => { if (!pool.includes(c)) state.contrastGroupB.delete(c); });
+
+  function buildPicker(gridId, otherSet, ownSet, excludeOwnFromOther){
+    const grid = document.getElementById(gridId);
+    grid.innerHTML = "";
+    pool.forEach(cat => {
+      if (excludeOwnFromOther && otherSet.has(cat)) return; // keep A/B disjoint
+      const lbl = document.createElement("label");
+      lbl.className = "check";
+      lbl.innerHTML = `<input type="checkbox" ${ownSet.has(cat)?"checked":""}> ${cat}`;
+      lbl.querySelector("input").addEventListener("change", (e) => {
+        e.target.checked ? ownSet.add(cat) : ownSet.delete(cat);
+        state.contrastResults = null;
+        if (gridId === "contrast-grid-a") state.contrastGroupB.delete(cat); // stay disjoint
+        render();
+      });
+      grid.appendChild(lbl);
+    });
+  }
+  buildPicker("contrast-grid-a", state.contrastGroupB, state.contrastGroupA, false);
+  const groupBWrap = document.getElementById("contrast-groupb-wrap");
+  groupBWrap.style.display = (state.contrastMode === "custom") ? "block" : "none";
+  if (state.contrastMode === "custom"){
+    buildPicker("contrast-grid-b", state.contrastGroupA, state.contrastGroupB, true);
+  }
+
+  const durationLabel = document.getElementById("contrast-variable-duration-label");
+  const durationInput = durationLabel.querySelector("input");
+  durationInput.disabled = !state.hasDurationData;
+  durationLabel.title = state.hasDurationData ? "" : "No end-time column detected alongside the start-time column -- duration unavailable for this file.";
+  if (!state.hasDurationData && state.contrastVariable === "duration"){
+    state.contrastVariable = "formant";
+    document.querySelector('input[name="contrast-variable"][value="formant"]').checked = true;
+  }
+
+  const descRows = buildContrastDescriptiveRows();
+  const sigValid = state.contrastResults && state.contrastResults.sig === contrastSignature();
+  const sigByKey = new Map();
+  if (sigValid) state.contrastResults.rows.forEach(r => sigByKey.set(r.vowel+"::"+r.label, r));
+
+  const body = document.getElementById("stats-contrast-body");
+  body.innerHTML = descRows.length
+    ? descRows.map(r => {
+        const sig = sigByKey.get(r.vowel+"::"+r.label);
+        const pCell = sig ? (sig.p < 0.001 ? "&lt; .001" : sig.p.toFixed(3))
+                           : `<span style="color:var(--text-faint);">${state.contrastGroupA.size ? "click Compute" : "\u2013"}</span>`;
+        return `
+        <tr>
+          <td>${r.vowel}</td><td>${r.label}</td>
+          <td>${r.nA}</td><td>${r.nB}</td>
+          <td>${r.nSpeakersA}</td><td>${r.nSpeakersB}</td>
+          <td>${isNaN(r.meanA)?"\u2013":r.meanA.toFixed(2)}</td>
+          <td>${isNaN(r.meanB)?"\u2013":r.meanB.toFixed(2)}</td>
+          <td>${isNaN(r.diff)?"\u2013":r.diff.toFixed(2)}</td>
+          <td>${pCell}</td>
+        </tr>`;
+      }).join("")
+    : `<tr><td colspan="10" class="stats-empty">Pick at least one Environment-context category for Group A above.</td></tr>`;
+}
+
+// One row per currently-shown category: N, means, and F1/F2 variance/SD,
+// reusing the same covMatrix() the confidence ellipses are built from.
+function buildDispersionRows(){
+  const {f1, f2} = currentFormantPair();
+  return currentCategories
+    .filter(cat => cat.rows.length >= 3)
+    .map(cat => {
+      const xs = cat.rows.map(r=>r[f2]), ys = cat.rows.map(r=>r[f1]);
+      const {varX, varY, meanX, meanY} = covMatrix(xs, ys);
+      return {
+        label: cat.label, n: cat.rows.length,
+        meanF2: meanX, meanF1: meanY,
+        varF2: varX, varF1: varY,
+        sdF2: Math.sqrt(varX), sdF1: Math.sqrt(varY),
+      };
+    })
+    .sort((a,b) => (b.sdF2+b.sdF1) - (a.sdF2+a.sdF1)); // most spread-out first
+}
+
+function updateDistributionPanel(){
+  const {f1, f2, unit:pairUnit, label:pairLabel} = currentFormantPair();
+  const formantRadio = document.querySelector('input[name="dist-formant"]:checked');
+  const useF1 = formantRadio && formantRadio.value === "f1";
+  const col = useF1 ? f1 : f2;
+  const colLabel = useF1 ? "F1" : "F2";
+
+  const svg = d3.select("#distribution-plot");
+  svg.selectAll("*").remove();
+  const legendEl = document.getElementById("distribution-legend");
+  legendEl.innerHTML = "";
+
+  const wrap = document.getElementById("distribution-plot-wrap");
+  const width = wrap.clientWidth, height = wrap.clientHeight;
+  if (!width || !height) return;
+  svg.attr("viewBox", `0 0 ${width} ${height}`);
+
+  const cats = currentCategories.filter(cat => cat.rows.length >= 5);
+  if (!cats.length){
+    svg.append("text").attr("x", width/2).attr("y", height/2).attr("text-anchor","middle")
+      .attr("fill","var(--text-faint)").style("font-family","var(--font-mono)").style("font-size","12px")
+      .text("Not enough tokens in the current categories (need 5+ per category) for a density curve.");
+    return;
+  }
+
+  const margin = {top:12, right:16, bottom:32, left:16};
+  const allValues = cats.flatMap(cat => cat.rows.map(r=>r[col]));
+  const domainMin = d3.min(allValues), domainMax = d3.max(allValues);
+  const pad = (domainMax-domainMin)*0.12 || 10;
+  const xDomain = [domainMin-pad, domainMax+pad];
+  const gridN = 200;
+  const grid = d3.range(gridN).map(i => xDomain[0] + i*(xDomain[1]-xDomain[0])/(gridN-1));
+
+  const curves = cats.map(cat => {
+    const vals = cat.rows.map(r=>r[col]);
+    const bw = silvermanBandwidth(vals);
+    return {cat, density: kde1d(vals, grid, bw)};
+  });
+  const yMax = d3.max(curves.flatMap(c => c.density)) || 1;
+
+  // Deliberately NOT inverted (unlike the main F1xF2 plot's phonetic axis
+  // convention) -- this is a plain single-variable density comparison, and
+  // standard ascending order is the more familiar reading for that.
+  const xScale = d3.scaleLinear().domain(xDomain).range([margin.left, width-margin.right]);
+  const yScale = d3.scaleLinear().domain([0, yMax]).range([height-margin.bottom, margin.top]);
+  const lineGen = d3.line().x((d,i)=>xScale(grid[i])).y(d=>yScale(d)).curve(d3.curveBasis);
+
+  curves.forEach(({cat, density}) => {
+    svg.append("path").attr("d", lineGen(density))
+      .attr("fill","none").attr("stroke", cat.color).attr("stroke-width",1.8).attr("opacity",0.9);
+  });
+
+  svg.append("line")
+    .attr("x1", margin.left).attr("x2", width-margin.right)
+    .attr("y1", yScale(0)).attr("y2", yScale(0))
+    .attr("stroke", "var(--text-faint)").attr("stroke-width", 1.2);
+
+  svg.append("g").attr("class","axis")
+    .attr("transform", `translate(0,${height-margin.bottom+1})`)
+    .call(d3.axisBottom(xScale).ticks(6));
+  svg.append("text").attr("x", width/2).attr("y", height-2)
+    .attr("text-anchor","middle").attr("fill","var(--text-dim)")
+    .style("font-family","var(--font-mono)").style("font-size","10.5px")
+    .text(`${colLabel} (${pairUnit || pairLabel})`);
+
+  cats.forEach(cat => {
+    const item = document.createElement("div");
+    item.className = "legend-item";
+    item.innerHTML = `<span class="legend-swatch" style="background:${cat.color}"></span>${cat.label}`;
+    legendEl.appendChild(item);
+  });
+}
+
+// Sort state for the "Pairwise category overlap" table -- module-level so it
+// survives across render()/updateStatsPanel() calls, defaulting to the
+// original fixed behavior (ascending Pillai) until the user clicks a header.
+let overlapSortState = {key:"pillai", dir:"asc"};
+function sortOverlapBy(key){
+  if (overlapSortState.key === key){
+    overlapSortState.dir = overlapSortState.dir === "asc" ? "desc" : "asc";
+  } else {
+    overlapSortState = {key, dir:"asc"};
+  }
+  updateStatsPanel();
+}
+document.querySelectorAll('.stats-table th.sortable').forEach(th => {
+  th.addEventListener("click", () => sortOverlapBy(th.dataset.key));
+});
+
+document.getElementById("stats-toggle").addEventListener("click", () => {
+  const panel = document.getElementById("stats-panel");
+  const showing = panel.style.display !== "none";
+  panel.style.display = showing ? "none" : "block";
+  if (!showing) updateStatsPanel();
+});
+
+document.getElementById("distribution-toggle").addEventListener("click", () => {
+  const panel = document.getElementById("distribution-panel");
+  const showing = panel.style.display !== "none";
+  panel.style.display = showing ? "none" : "block";
+  if (!showing) updateDistributionPanel();
+});
+document.querySelectorAll('input[name="dist-formant"]').forEach(input => {
+  input.addEventListener("change", updateDistributionPanel);
+});
+
+
+// ==============================================================================
+// RENDER
+// ==============================================================================
+function render(){
+  const readout = document.getElementById("readout");
+  readout.classList.remove("error");
+  try{
+    renderInner();
+  } catch(err){
+    console.error(err);
+    readout.textContent = "Render error: " + err.message;
+    readout.classList.add("error");
+  }
+}
+
+function renderInner(){
+  const svg = d3.select("#plot");
+  svg.selectAll("*").remove();
+  document.getElementById("legend").innerHTML = "";
+
+  if (!state.rows.length) return;
+  const subset = getFilteredSubset();
+  const {f1, f2, label:pairLabel, unit:pairUnit} = currentFormantPair();
+
+  const readout = document.getElementById("readout");
+  if (!subset.length){
+    readout.textContent = "No tokens match the current speaker/vowel selection.";
+    return;
+  }
+
+  const wrap = document.getElementById("plot-wrap");
+  const width = wrap.clientWidth, height = wrap.clientHeight;
+  svg.attr("viewBox", `0 0 ${width} ${height}`);
+
+  const categories = buildCategories(subset);
+  // If "center each category on its own mean" is active, every category's
+  // own mean gets cached here once -- both the plotting functions below and
+  // the auto axis-range computation need this same per-category offset, so
+  // it's computed exactly once per render rather than repeatedly.
+  categories.forEach(cat => {
+    const xs = cat.rows.map(r=>r[f2]), ys = cat.rows.map(r=>r[f1]);
+    cat._centerF2 = xs.length ? mean(xs) : 0;
+    cat._centerF1 = ys.length ? mean(ys) : 0;
+  });
+
+  // ---- axis range ----
+  let f2Min,f2Max,f1Min,f1Max;
+  if (state.axisMode === "custom" && [state.customF2Min,state.customF2Max,state.customF1Min,state.customF1Max].every(isFinite)){
+    f2Min = Math.min(state.customF2Min, state.customF2Max);
+    f2Max = Math.max(state.customF2Min, state.customF2Max);
+    f1Min = Math.min(state.customF1Min, state.customF1Max);
+    f1Max = Math.max(state.customF1Min, state.customF1Max);
+  } else {
+    // When centering is active, the meaningful range is the spread of
+    // deviations from each category's OWN mean, not the raw F2/F1 values --
+    // otherwise every category's cloud (now centered near zero) would sit
+    // in a tiny corner of an axis still scaled to the original absolute range.
+    let f2vals, f1vals;
+    if (state.centerOnMean){
+      f2vals = []; f1vals = [];
+      categories.forEach(cat => {
+        cat.rows.forEach(r => {
+          f2vals.push(r[f2] - cat._centerF2);
+          f1vals.push(r[f1] - cat._centerF1);
+        });
+      });
+    } else {
+      f2vals = subset.map(r=>r[f2]); f1vals = subset.map(r=>r[f1]);
+    }
+    const f2lo = d3.min(f2vals), f2hi = d3.max(f2vals);
+    const f1lo = d3.min(f1vals), f1hi = d3.max(f1vals);
+    const f2m = (f2hi-f2lo)*0.08 || 10, f1m = (f1hi-f1lo)*0.08 || 10;
+    f2Min = f2lo-f2m; f2Max = f2hi+f2m; f1Min = f1lo-f1m; f1Max = f1hi+f1m;
+  }
+
+  // F2 decreases left-to-right, F1 decreases bottom-to-top (phonetic convention)
+  const xScale = d3.scaleLinear().domain([f2Min,f2Max]).range([width-MARGIN.right, MARGIN.left]);
+  const yScale = d3.scaleLinear().domain([f1Min,f1Max]).range([MARGIN.top, height-MARGIN.bottom]);
+
+  // gridlines
+  const gx = svg.append("g").attr("class","grid")
+    .attr("transform", `translate(0,${height-MARGIN.bottom})`)
+    .call(d3.axisBottom(xScale).ticks(8).tickSize(-(height-MARGIN.top-MARGIN.bottom)).tickFormat(""));
+  const gy = svg.append("g").attr("class","grid")
+    .attr("transform", `translate(${MARGIN.left},0)`)
+    .call(d3.axisLeft(yScale).ticks(8).tickSize(-(width-MARGIN.left-MARGIN.right)).tickFormat(""));
+
+  const plotArea = svg.append("g").attr("clip-path", "url(#plot-clip)");
+  svg.append("clipPath").attr("id","plot-clip").append("rect")
+    .attr("x",MARGIN.left).attr("y",MARGIN.top)
+    .attr("width", Math.max(width-MARGIN.left-MARGIN.right,0))
+    .attr("height", Math.max(height-MARGIN.top-MARGIN.bottom,0));
+
+  // ---- heatmap layer (bottom) ----
+  if (state.modes.has("heatmap")){
+    if (state.colorScheme === "vowel-env"){
+      buildVowelBackgroundCategories(subset).forEach(cat => drawHeatmap(plotArea, cat, xScale, yScale, width, height, 0.55));
+    }
+    categories.forEach(cat => drawHeatmap(plotArea, cat, xScale, yScale, width, height));
+  }
+
+  // ---- confidence ellipses ----
+  if (state.showEllipses){
+    // Ellipses always break out by vowel (see note in the Python tool this
+    // mirrors) -- pooling every vowel into one region isn't meaningful.
+    const ellipseCats = (state.colorScheme === "vowel")
+      ? categories
+      : buildEllipseCategoriesByVowel(subset);
+    ellipseCats.forEach(cat => drawEllipse(plotArea, cat, xScale, yScale));
+  }
+
+  // ---- tokens ----
+  if (state.modes.has("tokens")){
+    categories.forEach(cat => drawTokens(plotArea, cat, xScale, yScale));
+  }
+
+  // ---- means ----
+  if (state.modes.has("means")){
+    const entities = buildMeansEntities(subset);
+    entities.forEach(ent => drawMeansEntity(plotArea, ent, xScale, yScale));
+  }
+
+  // ---- reference overlays (paper baseline + user-supplied file, if any) ----
+  // Skipped entirely while centering is on: reference values are absolute
+  // positions, which don't mean anything plotted against deviation-from-
+  // own-mean axes.
+  const refKey = currentReferenceKey();
+  updateReferenceHint();
+  if (!state.centerOnMean && state.showPaperReference && refKey && PAPER_REFERENCE[refKey]){
+    drawReferenceOverlay(plotArea, xScale, yScale, PAPER_REFERENCE[refKey],
+      PAPER_REFERENCE.name, d3.symbolStar, "6,3");
+  }
+  if (!state.centerOnMean && state.showCustomReference && refKey && Array.isArray(window.USER_REFERENCE_DATA)){
+    window.USER_REFERENCE_DATA.forEach((refSet, i) => {
+      if (refSet.appliesTo === refKey && refSet.values){
+        const dash = ["2,2", "5,2,1,2", "8,2"][i % 3];
+        drawReferenceOverlay(plotArea, xScale, yScale, refSet.values, refSet.name, d3.symbolDiamond, dash);
+      }
+    });
+  }
+
+  // ---- axes ----
+  svg.append("g").attr("class","axis")
+    .attr("transform", `translate(0,${height-MARGIN.bottom})`)
+    .call(d3.axisBottom(xScale).ticks(8));
+  svg.append("g").attr("class","axis")
+    .attr("transform", `translate(${MARGIN.left},0)`)
+    .call(d3.axisLeft(yScale).ticks(8));
+  const axisPrefix = state.centerOnMean ? "\u0394" : "";
+  const axisSuffix = state.centerOnMean ? ", own mean" : "";
+  svg.append("text").attr("x", width/2).attr("y", height-10)
+    .attr("text-anchor","middle").attr("fill","var(--text-dim)")
+    .style("font-family","var(--font-mono)").style("font-size","11px")
+    .text(`${axisPrefix}F2 (${pairUnit || pairLabel}${axisSuffix})`);
+  svg.append("text").attr("transform", `rotate(-90)`).attr("x", -height/2).attr("y", 16)
+    .attr("text-anchor","middle").attr("fill","var(--text-dim)")
+    .style("font-family","var(--font-mono)").style("font-size","11px")
+    .text(`${axisPrefix}F1 (${pairUnit || pairLabel}${axisSuffix})`);
+
+  // ---- legend ----
+  const legendEl = document.getElementById("legend");
+  categories.forEach(cat => {
+    const item = document.createElement("div");
+    item.className = "legend-item";
+    item.innerHTML = `<span class="legend-swatch" style="background:${cat.color}"></span>${cat.label}`;
+    legendEl.appendChild(item);
+  });
+  if (state.showPaperReference && refKey && PAPER_REFERENCE[refKey]){
+    const item = document.createElement("div");
+    item.className = "legend-item";
+    item.innerHTML = `<span class="legend-swatch" style="background:#000;border:1px solid #fff"></span>${PAPER_REFERENCE.name}`;
+    legendEl.appendChild(item);
+  }
+  if (state.showCustomReference && refKey && Array.isArray(window.USER_REFERENCE_DATA)){
+    window.USER_REFERENCE_DATA.forEach(refSet => {
+      if (refSet.appliesTo === refKey && refSet.values){
+        const item = document.createElement("div");
+        item.className = "legend-item";
+        item.innerHTML = `<span class="legend-swatch" style="background:#000;border:1px solid #fff"></span>${refSet.name} (custom)`;
+        legendEl.appendChild(item);
+      }
+    });
+  }
+
+  // ---- readout ----
+  const modeLabel = Array.from(state.modes).join(" + ");
+  readout.textContent = "";
+  readout.innerHTML =
+    `<span>n tokens: <b>${subset.length}</b></span>` +
+    `<span>categories: <b>${categories.length}</b></span>` +
+    `<span>mode: <b>${modeLabel}</b></span>` +
+    `<span>color: <b>${state.colorScheme}</b></span>` +
+    `<span>formants: <b>${f2} / ${f1}</b></span>` +
+    (state.showEllipses ? `<span>ellipses: <b>${state.confidencePct}% CI</b></span>` : "") +
+    ((state.prevCol || state.nextCol) ? `<span>context: <b>${state.envSide} / ${state.envLevel}</b></span>` : "") +
+    ((state.hasOutlierData && state.removeOutliers)
+      ? `<span>outliers removed: <b>${getFilteredSubset(true).length - subset.length}</b></span>`
+      : "");
+
+  // ---- statistics panel (only recomputed if currently visible -- these
+  // are cheap compared to heatmap KDE, but no reason to pay even that cost
+  // while the panel is hidden) ----
+  currentSubset = subset;
+  currentCategories = categories;
+  if (document.getElementById("stats-panel").style.display !== "none"){
+    updateStatsPanel();
+  }
+  if (document.getElementById("distribution-panel").style.display !== "none"){
+    updateDistributionPanel();
+  }
+}
+
+function buildEllipseCategoriesByVowel(subset){
+  const cats = [];
+  state.vowels.forEach(v => {
+    if (!state.selectedVowels.has(v)) return;
+    const rows = subset.filter(r => String(r[state.vowelCol]) === v);
+    if (rows.length >= 3) cats.push({key:v, label:v, color:`hsl(${vowelHue(v)},70%,55%)`, rows, vowel:v});
+  });
+  return cats;
+}
+
+// Mean F2/F1 for a category's rows -- used to center it on its own mean
+// when that display option is active. Computed locally rather than relying
+// on a shared pre-cached value, since ellipse-only category lists (built by
+// buildEllipseCategoriesByVowel) are a separate set of category objects
+// from the ones the axis-range step caches this on.
+function categoryCenter(cat, f2, f1){
+  const xs = cat.rows.map(r=>r[f2]), ys = cat.rows.map(r=>r[f1]);
+  return {cf2: xs.length?mean(xs):0, cf1: ys.length?mean(ys):0};
+}
+
+function drawTokens(container, cat, xScale, yScale){
+  const {f1, f2} = currentFormantPair();
+  const symbolType = cat.vowel ? vowelSymbol(cat.vowel) : d3.symbolCircle;
+  const symPath = d3.symbol().type(symbolType).size(26)();
+  const {cf2, cf1} = state.centerOnMean ? categoryCenter(cat, f2, f1) : {cf2:0, cf1:0};
+  const g = container.append("g");
+  const tooltip = document.getElementById("token-tooltip");
+  const wrapEl = document.getElementById("plot-wrap");
+  cat.rows.forEach(r => {
+    const px = state.centerOnMean ? r[f2]-cf2 : r[f2];
+    const py = state.centerOnMean ? r[f1]-cf1 : r[f1];
+    g.append("path")
+      .attr("d", symPath)
+      .attr("transform", `translate(${xScale(px)},${yScale(py)})`)
+      .attr("fill", cat.color)
+      .attr("opacity", 0.55)
+      .style("cursor", "pointer")
+      .on("mouseenter", (event) => {
+        const vowel = String(r[state.vowelCol]);
+        const word = state.wordCol ? r[state.wordCol] : null;
+        const time = state.timeCol ? r[state.timeCol] : null;
+        // "Typical for its category" uses the SAME category grouping
+        // currently defining color (vowel, vowel x speaker, etc.) -- so
+        // what "typical" means adapts to whatever comparison is on screen.
+        const pct = typicalityPercentile(r[f2], r[f1], cat, f2, f1);
+        let html = `<b>${vowel}</b>`;
+        if (state.genderCol) html += `<br>gender: ${r[state.genderCol]}`;
+        if (state.numCol) html += `<br>speaker no.: ${r[state.numCol]}`;
+        html += word != null && word !== "" ? `<br>word: ${word}` : `<br>word: <span class="dim">\u2013</span>`;
+        state.extraFilters.forEach(f => { html += `<br>${f.key}: ${r[f.col]}`; });
+        if (state.prevCol) html += `<br>prev: ${r[state.prevCol]}${state.markPrevCol && r[state.markPrevCol] != null && r[state.markPrevCol] !== "NA" ? " (" + r[state.markPrevCol] + " elided)" : ""}`;
+        if (state.nextCol) html += `<br>next: ${r[state.nextCol]}${state.markNextCol && r[state.markNextCol] != null && r[state.markNextCol] !== "NA" ? " (" + r[state.markNextCol] + " elided)" : ""}`;
+        if (isNum(r.__duration)) html += `<br>duration: ${r.__duration.toFixed(0)} ms${state.pisoCol && isFlagTrue(r[state.pisoCol]) ? " (aligner floor)" : ""}`;
+        html += time != null && time !== "" ? `<br>start: ${(typeof time === "number") ? time.toFixed(1) : time} ms` : `<br>start: <span class="dim">\u2013</span>`;
+        html += pct !== null
+          ? `<br>typicality: ${pct.toFixed(0)}th pct <span class="dim">(0=center, 100=edge, for ${cat.label})</span>`
+          : `<br>typicality: <span class="dim">\u2013 (category too small)</span>`;
+        tooltip.innerHTML = html;
+        tooltip.style.display = "block";
+      })
+      .on("mousemove", (event) => {
+        const bounds = wrapEl.getBoundingClientRect();
+        let left = event.clientX - bounds.left + 14;
+        let top = event.clientY - bounds.top + 14;
+        // keep the tooltip from running off the right/bottom edge
+        if (left + 220 > bounds.width) left = event.clientX - bounds.left - 234;
+        if (top + 190 > bounds.height) top = event.clientY - bounds.top - 200;
+        tooltip.style.left = left + "px";
+        tooltip.style.top = top + "px";
+      })
+      .on("mouseleave", () => { tooltip.style.display = "none"; });
+  });
+}
+
+function drawMeansEntity(container, ent, xScale, yScale){
+  const {f1, f2, unit:pairUnit, label:pairLabel} = currentFormantPair();
+  const scheme = state.colorScheme;
+  const isEnvScheme = (scheme === "env" || scheme === "vowel-env");
+  // env schemes get their fixed voiced/voiceless (or categorical) color here
+  // instead of the generic neutral entity color -- ent.key IS the env
+  // category string for these two schemes (see buildMeansEntities above).
+  const lineColor = isEnvScheme ? envCategoryColor(ent.key, ent.idx, ent.total) : entityColorFor(ent.idx, ent.total);
+  const tooltip = document.getElementById("token-tooltip");
+  const wrapEl = document.getElementById("plot-wrap");
+  const byVowel = {};
+  ent.rows.forEach(r => {
+    const v = String(r[state.vowelCol]);
+    if (!byVowel[v]) byVowel[v] = [];
+    byVowel[v].push(r);
+  });
+  const present = state.vowels.filter(v => byVowel[v] && state.selectedVowels.has(v));
+  const pts = present.map(v => ({
+    v, f2:mean(byVowel[v].map(r=>r[f2])), f1:mean(byVowel[v].map(r=>r[f1])),
+  }));
+  if (pts.length > 2){
+    // curveLinearClosed draws the segment back from the last point to the
+    // first -- without it, "u" was a dead end instead of closing the loop
+    // back to "i", so the trapezoid was really just a zigzag with its
+    // last edge missing.
+    const line = d3.line().x(d=>xScale(d.f2)).y(d=>yScale(d.f1)).curve(d3.curveLinearClosed);
+    container.append("path").attr("d", line(pts))
+      .attr("fill","none").attr("stroke", lineColor).attr("stroke-width",1.6).attr("opacity",0.75);
+  } else if (pts.length === 2){
+    const line = d3.line().x(d=>xScale(d.f2)).y(d=>yScale(d.f1));
+    container.append("path").attr("d", line(pts))
+      .attr("fill","none").attr("stroke", lineColor).attr("stroke-width",1.6).attr("opacity",0.75);
+  }
+  pts.forEach(d => {
+    let color;
+    if (scheme === "vowel-speaker" || scheme === "vowel-group" || scheme === "vowel-gender"){
+      color = `hsl(${vowelHue(d.v)},72%,${entityShade(ent.idx, ent.total)}%)`;
+    } else if (scheme === "vowel"){
+      color = `hsl(${vowelHue(d.v)},70%,55%)`;
+    } else {
+      color = lineColor;
+    }
+    const symPath = d3.symbol().type(vowelSymbol(d.v)).size(90)();
+    const n = byVowel[d.v].length;
+    container.append("path").attr("d", symPath)
+      .attr("transform", `translate(${xScale(d.f2)},${yScale(d.f1)})`)
+      .attr("fill", color).attr("stroke","#0c0e11").attr("stroke-width",0.75)
+      .style("cursor", "pointer")
+      .on("mouseenter", (event) => {
+        let html = `<b>${d.v}</b> \u2014 ${ent.label}`;
+        html += `<br>n tokens: ${n}`;
+        html += `<br>mean F2: ${d.f2.toFixed(1)} ${pairUnit || pairLabel}`;
+        html += `<br>mean F1: ${d.f1.toFixed(1)} ${pairUnit || pairLabel}`;
+        tooltip.innerHTML = html;
+        tooltip.style.display = "block";
+      })
+      .on("mousemove", (event) => {
+        const bounds = wrapEl.getBoundingClientRect();
+        let left = event.clientX - bounds.left + 14;
+        let top = event.clientY - bounds.top + 14;
+        if (left + 220 > bounds.width) left = event.clientX - bounds.left - 234;
+        if (top + 190 > bounds.height) top = event.clientY - bounds.top - 200;
+        tooltip.style.left = left + "px";
+        tooltip.style.top = top + "px";
+      })
+      .on("mouseleave", () => { tooltip.style.display = "none"; });
+  });
+}
+
+// ==============================================================================
+// REFERENCE OVERLAY DRAWING
+// Always rendered in a fixed black/white style, independent of theme and
+// color scheme, specifically so a reference trapezoid never gets mistaken
+// for one of your own categories no matter what else is on screen.
+// `dashArray` lets multiple reference sets (the built-in paper reference,
+// plus however many the user's own file defines) stay visually distinct
+// from EACH OTHER while all staying in the same black/white family.
+// ==============================================================================
+function drawReferenceOverlay(container, xScale, yScale, valuesByVowel, label, symbolType, dashArray){
+  const pts = state.vowels
+    .filter(v => valuesByVowel[v] && state.selectedVowels.has(v))
+    .map(v => ({v, f2:valuesByVowel[v].F2, f1:valuesByVowel[v].F1}));
+  if (!pts.length) return;
+
+  if (pts.length > 2){
+    const line = d3.line().x(d=>xScale(d.f2)).y(d=>yScale(d.f1)).curve(d3.curveLinearClosed);
+    container.append("path").attr("d", line(pts))
+      .attr("fill","none").attr("stroke","#000").attr("stroke-width",1.8)
+      .attr("stroke-dasharray", dashArray).attr("opacity",0.95);
+  }
+  pts.forEach(d => {
+    const symPath = d3.symbol().type(symbolType).size(110)();
+    container.append("path").attr("d", symPath)
+      .attr("transform", `translate(${xScale(d.f2)},${yScale(d.f1)})`)
+      .attr("fill","#000").attr("stroke","#fff").attr("stroke-width",1.3);
+  });
+}
+
+// Heatmap's KDE + marching-squares contour extraction is the expensive part
+// of this whole tool -- with N categories (e.g. 40 speakers x 5 vowels =
+// 200 under "vowel x speaker") it was re-running from scratch on every
+// single interaction, including ones that don't even touch the heatmap
+// (toggling ellipses, switching normalization back to itself, etc.).
+// Cached here by everything that actually changes the result: which
+// category, which formant columns, and the ACTUAL pixel-space axis domain
+// (not just width/height -- auto-ranged axes shift when the subset
+// changes, and a cached contour computed under a different domain would be
+// silently wrong if reused). Cleared whenever new data is loaded, since a
+// different file can coincidentally reuse the same group/speaker/vowel
+// labels. Capped in size as a cheap guard against unbounded growth over a
+// long session -- simpler than proper LRU eviction, and sufficient here.
+const heatmapCache = new Map();
+
+function drawHeatmap(container, cat, xScale, yScale, width, height, opacityScale){
+  opacityScale = (typeof opacityScale === "number") ? opacityScale : 1;
+  const {f1, f2} = currentFormantPair();
+  if (cat.rows.length < 5) return; // not enough tokens for a stable KDE
+
+  const [f2d0, f2d1] = xScale.domain();
+  const [f1d0, f1d1] = yScale.domain();
+  const cacheKey = [
+    cat.key, f1, f2, width, height, state.centerOnMean,
+    f2d0.toFixed(2), f2d1.toFixed(2), f1d0.toFixed(2), f1d1.toFixed(2),
+  ].join("::");
+
+  let contours = heatmapCache.get(cacheKey);
+  if (!contours){
+    const {cf2, cf1} = state.centerOnMean ? categoryCenter(cat, f2, f1) : {cf2:0, cf1:0};
+    const pts = cat.rows.map(r => {
+      const px = state.centerOnMean ? r[f2]-cf2 : r[f2];
+      const py = state.centerOnMean ? r[f1]-cf1 : r[f1];
+      return [xScale(px), yScale(py)];
+    });
+    const contourGen = d3.contourDensity()
+      .x(d => d[0]).y(d => d[1])
+      .size([width, height])
+      .bandwidth(22)
+      .cellSize(8)   // default is 4; this alone is a ~2.75x speedup on dense scenes
+      .thresholds(7);
+    try { contours = contourGen(pts); } catch(e){ return; }
+    if (!contours.length) return;
+    if (heatmapCache.size > 500) heatmapCache.clear();
+    heatmapCache.set(cacheKey, contours);
+  }
+
+  const path = d3.geoPath();
+  contours.forEach((c,i) => {
+    const t = i/(contours.length-1 || 1);
+    container.append("path").attr("d", path(c))
+      .attr("fill", cat.color).attr("opacity", (0.10 + t*0.55) * opacityScale)
+      .attr("stroke","none");
+  });
+  container.append("path").attr("d", path(contours[0]))
+    .attr("fill","none").attr("stroke", cat.color).attr("stroke-width",1.2).attr("opacity",0.9 * opacityScale);
+}
+
+function drawEllipse(container, cat, xScale, yScale){
+  const {f1, f2} = currentFormantPair();
+  const {cf2, cf1} = state.centerOnMean ? categoryCenter(cat, f2, f1) : {cf2:0, cf1:0};
+  const xs = cat.rows.map(r => state.centerOnMean ? r[f2]-cf2 : r[f2]);
+  const ys = cat.rows.map(r => state.centerOnMean ? r[f1]-cf1 : r[f1]);
+  const pts = ellipsePoints(xs, ys, state.confidencePct/100);
+  if (!pts) return;
+  const line = d3.line().x(d=>xScale(d[0])).y(d=>yScale(d[1])).curve(d3.curveLinearClosed);
+  container.append("path").attr("d", line(pts))
+    .attr("fill","none").attr("stroke", cat.color).attr("stroke-width",1.4)
+    .attr("stroke-dasharray","4,3").attr("opacity",0.9);
+}
+
+// ==============================================================================
+// EXPORT
+// ==============================================================================
+function serializeSVG(){
+  const svgEl = document.getElementById("plot").cloneNode(true);
+  svgEl.setAttribute("xmlns","http://www.w3.org/2000/svg");
+  const cs = getComputedStyle(document.documentElement);
+  const bg = cs.getPropertyValue("--bg").trim();
+  const textFaint = cs.getPropertyValue("--text-faint").trim();
+  const border = cs.getPropertyValue("--border").trim();
+  const borderSoft = cs.getPropertyValue("--border-soft").trim();
+  svgEl.style.background = bg;
+  // inline the CSS custom properties used inside the SVG (var() references
+  // won't resolve once the SVG is detached from this page's stylesheet) --
+  // pulled from the CURRENTLY active theme, so an export matches whatever
+  // you were looking at, light or dark.
+  const style = document.createElement("style");
+  style.textContent = `
+    text{fill:${textFaint};font-family:monospace;font-size:10.5px;}
+    .axis path,.axis line{stroke:${border};}
+    .grid line{stroke:${borderSoft};}
+  `;
+  svgEl.insertBefore(style, svgEl.firstChild);
+  return {svgString: new XMLSerializer().serializeToString(svgEl), bg};
+}
+
+document.getElementById("export-svg").addEventListener("click", () => {
+  const {svgString} = serializeSVG();
+  const blob = new Blob([svgString], {type:"image/svg+xml"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "vowel_plot.svg"; a.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById("export-png").addEventListener("click", () => {
+  const {svgString, bg} = serializeSVG();
+  const svgEl = document.getElementById("plot");
+  const w = svgEl.clientWidth * 2, h = svgEl.clientHeight * 2;
+  const img = new Image();
+  const blob = new Blob([svgString], {type:"image/svg+xml"});
+  const url = URL.createObjectURL(blob);
+  img.onload = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = bg; ctx.fillRect(0,0,w,h);
+    ctx.drawImage(img, 0, 0, w, h);
+    URL.revokeObjectURL(url);
+    canvas.toBlob(pngBlob => {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(pngBlob); a.download = "vowel_plot.png"; a.click();
+    });
+  };
+  img.src = url;
+});
+
+let resizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (state.rows.length) render(); }, 150);
+});
+
+})();
+</script>
+</body>
+</html>

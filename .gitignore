@@ -1,0 +1,5 @@
+# Este repositorio versiona solo el explorador de vocales por ahora.
+# Se ignora todo lo demás (corpus, audio, salidas y código de extracción) hasta decidir qué más incluir.
+*
+!.gitignore
+!vowel_explorer_v3.html
